@@ -315,6 +315,8 @@ namespace Lilbar
             N.DwmSetWindowAttribute(Handle, 33, ref round, 4);
         }
 
+        protected override void OnLoad(EventArgs e) { base.OnLoad(e); Glass.Enter(this); }
+
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);

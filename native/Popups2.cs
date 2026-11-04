@@ -78,7 +78,7 @@ namespace Lilbar
                         int i = p.Key.IndexOf(q, StringComparison.CurrentCultureIgnoreCase);
                         if (i < 0) continue;
                         string lnk = p.Value;
-                        var h = new Hit { Title = p.Key, Sub = "Ứng dụng", Icon = Sys.IconOf(lnk), Run = () => Sys.Launch(lnk) };
+                        var h = new Hit { Title = p.Key, Sub = "Ứng dụng", Icon = Sys.IconOf(lnk, S(20)), Run = () => Sys.Launch(lnk) };
                         (i == 0 ? starts : contains).Add(h);
                     }
                     hits.InsertRange(0, starts);
@@ -89,7 +89,7 @@ namespace Lilbar
             {
                 string path = Environment.ExpandEnvironmentVariables(q.Trim('"'));
                 if ((path.Contains(":\\") || path.StartsWith("\\\\")) && (Directory.Exists(path) || File.Exists(path)))
-                    hits.Add(new Hit { Title = "Mở " + path, Sub = Directory.Exists(path) ? "Thư mục" : "Tệp", Icon = Sys.IconOf(path), Run = () => Sys.Launch(path) });
+                    hits.Add(new Hit { Title = "Mở " + path, Sub = Directory.Exists(path) ? "Thư mục" : "Tệp", Icon = Sys.IconOf(path, S(20)), Run = () => Sys.Launch(path) });
                 bool url = q.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || q.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || (q.Contains(".") && !q.Contains(" ") && !q.Contains("\\"));
                 if (url)
                 {

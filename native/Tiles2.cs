@@ -497,7 +497,7 @@ namespace Lilbar
                     Glass.Tile(g, r);
                     string path = d.Path;
                     AddHit(r, null, b => Sys.Launch(path), "Tải về: " + Path.GetFileName(path) + "\nBấm để mở", false);
-                    Bitmap ic = Sys.IconOf(path);
+                    Bitmap ic = Sys.IconOf(path, S(24));
                     if (ic != null) g.DrawImage(ic, new Rectangle(r.X + S(8), r.Y + (r.Height - S(24)) / 2, S(24), S(24)));
                     Glass.Text(g, d.Name, Glass.Row, Color.White, new Rectangle(r.X + S(40), r.Y + S(3), r.Width - S(48), S(17)), StringAlignment.Near);
                     Glass.Text(g, "Tải về " + Ago(d.At), Glass.Date, Glass.Dim, new Rectangle(r.X + S(40), r.Y + S(20), r.Width - S(48), S(16)), StringAlignment.Near);

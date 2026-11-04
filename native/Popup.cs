@@ -23,8 +23,11 @@ namespace Lilbar
         readonly bool grid;
         readonly List<Rectangle> cells = new List<Rectangle>();
         readonly ToolTip tip = new ToolTip();
-        Bitmap buf;
+        Bitmap buf, frame;
         int hover = -1;
+        readonly bool motion = Glass.Motion;
+        readonly System.Diagnostics.Stopwatch clock = new System.Diagnostics.Stopwatch();
+        Timer anim;
 
         static int S(float v) { return Glass.S(v); }
 
@@ -79,6 +82,10 @@ namespace Lilbar
         {
             base.OnShown(e);
             Render();
+            clock.Start();
+            anim = new Timer { Interval = 10 };
+            anim.Tick += delegate { Invalidate(); if (clock.ElapsedMilliseconds >= Glass.EnterMs) { anim.Dispose(); anim = null; } };
+            anim.Start();
             Sys.Foreground(Handle);
             Activate();
         }
@@ -111,7 +118,7 @@ namespace Lilbar
                     if (i == hover) Glass.Fill(g, c, S(8), Color.FromArgb(40, 255, 255, 255));
                     if (grid)
                     {
-                        int s = S(24);
+                        int s = it.Icon != null && it.Icon.Width < S(24) ? it.Icon.Width : S(24); // never upscale a small tray icon
                         if (it.Icon != null) g.DrawImage(it.Icon, new Rectangle(c.X + (c.Width - s) / 2, c.Y + (c.Height - s) / 2, s, s));
                         else if (it.Glyph != null) Glass.Center(g, it.Glyph, Glass.Glyph, Color.White, c);
                     }
@@ -126,7 +133,32 @@ namespace Lilbar
             Invalidate();
         }
 
-        protected override void OnPaint(PaintEventArgs e) { Glass.Blit(e, buf); }
+        // Entrance: fade in and grow from 96 % with the origin at the bottom centre, where the dock tile is.
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            float t = clock.IsRunning ? Glass.EaseOut(clock.ElapsedMilliseconds / Glass.EnterMs) : 0;
+            if (t >= 1 || buf == null) { Glass.Blit(e, buf); return; }
+            if (frame == null || frame.Size != buf.Size) { if (frame != null) frame.Dispose(); frame = new Bitmap(buf.Width, buf.Height, PixelFormat.Format32bppPArgb); }
+            float sc = motion ? 0.96f + 0.04f * t : 1;
+            int w = (int)Math.Round(buf.Width * sc), h = (int)Math.Round(buf.Height * sc);
+            using (Graphics g = Graphics.FromImage(frame))
+            using (var ia = new ImageAttributes())
+            {
+                g.Clear(Color.Transparent);
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+                ia.SetColorMatrix(new ColorMatrix { Matrix33 = t });
+                g.DrawImage(buf, new Rectangle((buf.Width - w) / 2, buf.Height - h, w, h), 0, 0, buf.Width, buf.Height, GraphicsUnit.Pixel, ia);
+            }
+            Glass.Blit(e, frame);
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            if (anim != null) anim.Dispose();
+            if (frame != null) frame.Dispose();
+            if (buf != null) buf.Dispose();
+            base.OnFormClosed(e);
+        }
 
         int At(Point p) { return cells.FindIndex(c => c.Contains(p)); }
 

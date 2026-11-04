@@ -412,6 +412,8 @@ namespace Lilbar
             Invalidate();
         }
 
+        protected override void OnLoad(EventArgs e) { base.OnLoad(e); Glass.Enter(this); }
+
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);

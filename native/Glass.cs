@@ -22,28 +22,37 @@ namespace Lilbar
         public static void Init(float scale)
         {
             Scale = scale;
-            Time = F("Segoe UI", 14, FontStyle.Bold);
-            Date = F("Segoe UI", 10, FontStyle.Regular);
-            Value = F("Segoe UI Semibold", 10.5f, FontStyle.Regular);
-            Label = F("Segoe UI", 7, FontStyle.Regular);
-            Batt = F("Segoe UI", 13, FontStyle.Bold);
+            // Windows 11's own UI font: optical sizes stay legible at taskbar sizes. Windows 10 falls back to Segoe UI.
+            string text = Has("Segoe UI Variable Text") ? "Segoe UI Variable Text" : "Segoe UI";
+            string semi = Has("Segoe UI Variable Text Semibold") ? "Segoe UI Variable Text Semibold" : "Segoe UI Semibold";
+            string disp = Has("Segoe UI Variable Display") ? "Segoe UI Variable Display" : "Segoe UI";
+            Time = F(disp, 15, FontStyle.Bold);
+            Date = F(text, 11, FontStyle.Regular);
+            Value = F(semi, 11.5f, FontStyle.Regular);
+            Label = F(semi, 8, FontStyle.Regular);
+            Batt = F(disp, 14, FontStyle.Bold);
             Bolt = F("Segoe UI Symbol", 11, FontStyle.Regular);
-            Row = F("Segoe UI Semibold", 9.5f, FontStyle.Regular);
-            Day = F("Segoe UI", 9, FontStyle.Bold);
-            DateBig = F("Segoe UI", 13, FontStyle.Bold);
-            Glyph = F("Segoe UI Symbol", 12, FontStyle.Regular);
+            Row = F(semi, 10.5f, FontStyle.Regular);
+            Day = F(semi, 10, FontStyle.Regular);
+            DateBig = F(disp, 14, FontStyle.Bold);
+            Glyph = F("Segoe UI Symbol", 13, FontStyle.Regular);
             Sym = F("Segoe UI Symbol", 11, FontStyle.Regular);
-            Big = F("Segoe UI", 18, FontStyle.Regular);
-            Body = F("Segoe UI", 12.5f, FontStyle.Regular);
-            Small = F("Segoe UI", 10.5f, FontStyle.Regular);
-            Header = F("Segoe UI Semibold", 10, FontStyle.Regular);
-            Title = F("Segoe UI Semibold", 17, FontStyle.Regular);
+            Big = F(disp, 18, FontStyle.Regular);
+            Body = F(text, 12.5f, FontStyle.Regular);
+            Small = F(text, 11.5f, FontStyle.Regular);
+            Header = F(semi, 11, FontStyle.Regular);
+            Title = F(Has("Segoe UI Variable Display Semib") ? "Segoe UI Variable Display Semib" : "Segoe UI Semibold", 17, FontStyle.Regular);
             Mdl = F("Segoe MDL2 Assets", 14, FontStyle.Regular); // Windows' own icon font
             MdlSmall = F("Segoe MDL2 Assets", 11, FontStyle.Regular);
-            Flip = F("Segoe UI", 19, FontStyle.Bold);
-            Strike = F("Segoe UI", 12.5f, FontStyle.Strikeout);
+            Flip = F(disp, 19, FontStyle.Bold);
+            Strike = F(text, 12.5f, FontStyle.Strikeout);
             GlyphBig = F("Segoe UI Symbol", 19, FontStyle.Regular);
-            Huge = F("Segoe UI", 22, FontStyle.Bold);
+            Huge = F(disp, 22, FontStyle.Bold);
+        }
+
+        static bool Has(string family)
+        {
+            using (var f = new Font(family, 10)) return f.Name == family; // GDI+ silently substitutes a missing family
         }
 
         static Font F(string family, float px, FontStyle style) { return new Font(family, px * Scale, style, GraphicsUnit.Pixel); }
@@ -114,20 +123,25 @@ namespace Lilbar
             using (var b = new SolidBrush(c)) g.FillPath(b, p);
         }
 
-        public static void Tile(Graphics g, Rectangle r) { Pane(g, r, S(10), 118); }
+        public static void Tile(Graphics g, Rectangle r) { Pane(g, r, S(10), 64); }
 
         // Popups sit over arbitrary content, so their pane is darker for legibility.
-        public static void Panel(Graphics g, Rectangle r) { Pane(g, r, S(14), 210); }
+        public static void Panel(Graphics g, Rectangle r) { Pane(g, r, S(14), 236); }
 
-        static void Pane(Graphics g, Rectangle r, int rad, int alpha)
+        // Clear glass: a thin dark underlay for legibility, a white frost that fades downwards, a bright rim where
+        // light catches the top edge, and a soft dark outline that keeps the pane apart from busy wallpapers. No blur.
+        static void Pane(Graphics g, Rectangle r, int rad, int dark)
         {
             var edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
             using (GraphicsPath p = Round(edge, rad))
             {
-                using (var b = new SolidBrush(Color.FromArgb(alpha, 14, 14, 18))) g.FillPath(b, p);
-                using (var b = new LinearGradientBrush(r, Color.FromArgb(40, 255, 255, 255), Color.FromArgb(4, 255, 255, 255), 90f)) g.FillPath(b, p);
-                using (var pen = new Pen(Color.FromArgb(64, 255, 255, 255), 1f)) g.DrawPath(pen, p);
+                using (var b = new SolidBrush(Color.FromArgb(dark, 12, 14, 20))) g.FillPath(b, p);
+                using (var b = new LinearGradientBrush(r, Color.FromArgb(44, 255, 255, 255), Color.FromArgb(14, 255, 255, 255), 90f)) g.FillPath(b, p);
+                using (var b = new LinearGradientBrush(r, Color.FromArgb(160, 255, 255, 255), Color.FromArgb(40, 255, 255, 255), 90f))
+                using (var pen = new Pen(b, 1f)) g.DrawPath(pen, p);
             }
+            using (GraphicsPath o = Round(new Rectangle(r.X - 1, r.Y - 1, r.Width + 1, r.Height + 1), rad + 1))
+            using (var pen = new Pen(Color.FromArgb(46, 0, 0, 0), 1f)) g.DrawPath(pen, o);
         }
 
         public static void Center(Graphics g, string s, Font f, Color c, Rectangle r) { Text(g, s, f, c, r, StringAlignment.Center); }
@@ -135,7 +149,12 @@ namespace Lilbar
         public static void Text(Graphics g, string s, Font f, Color c, Rectangle r, StringAlignment h)
         {
             using (var sf = new StringFormat { Alignment = h, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap })
-            using (var b = new SolidBrush(c)) g.DrawString(s, f, b, r, sf);
+            {
+                // On clear glass (grayscale AA) a faint drop shadow keeps text legible over any wallpaper; opaque windows use ClearType and need none.
+                if (g.TextRenderingHint != TextRenderingHint.ClearTypeGridFit && c.A > 120)
+                    using (var sh = new SolidBrush(Color.FromArgb(c.A * 70 / 255, 0, 0, 0))) g.DrawString(s, f, sh, new Rectangle(r.X, r.Y + 1, r.Width, r.Height), sf);
+                using (var b = new SolidBrush(c)) g.DrawString(s, f, b, r, sf);
+            }
         }
 
         public static void Ring(Graphics g, Rectangle r, int pct, string label)
@@ -145,8 +164,8 @@ namespace Lilbar
             using (var track = new Pen(Color.FromArgb(56, 255, 255, 255), w)) g.DrawEllipse(track, rc);
             if (pct > 0)
                 using (var bar = new Pen(Blue, w) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(bar, rc, -90, Math.Min(pct, 100) * 3.6f);
-            Center(g, pct.ToString(), Value, Color.White, new Rectangle(r.X, r.Y + S(5), r.Width, S(14)));
-            Center(g, label, Label, Color.FromArgb(190, 255, 255, 255), new Rectangle(r.X, r.Y + S(17), r.Width, S(9)));
+            Center(g, pct.ToString(), Value, Color.White, new Rectangle(r.X, r.Y + r.Height / 2 - S(10), r.Width, S(14)));
+            Center(g, label, Label, Color.FromArgb(200, 255, 255, 255), new Rectangle(r.X, r.Y + r.Height / 2 + S(2), r.Width, S(10)));
         }
 
         public static void Chevron(Graphics g, Rectangle r, bool down)
@@ -154,6 +173,51 @@ namespace Lilbar
             float w = 5 * Scale, cx = r.X + r.Width / 2f, cy = r.Y + r.Height / 2f, s = down ? 1 : -1;
             using (var p = new Pen(Color.White, 1.6f * Scale) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
                 g.DrawLines(p, new[] { new PointF(cx - w, cy - s * w / 2), new PointF(cx, cy + s * w / 2), new PointF(cx + w, cy - s * w / 2) });
+        }
+
+        // Popup entrance: 180 ms on cubic-bezier(0.23, 1, 0.32, 1), a strong ease-out (Emil Kowalski's UI curve).
+        public const float EnterMs = 180;
+
+        public static float EaseOut(float t)
+        {
+            if (t <= 0) return 0;
+            if (t >= 1) return 1;
+            float u = t;
+            for (int i = 0; i < 8; i++) // Newton: find u with x(u) = t
+            {
+                float dx = BezD(u, 0.23f, 0.32f);
+                if (dx < 1e-4f) break;
+                u = Math.Max(0, Math.Min(1, u - (Bez(u, 0.23f, 0.32f) - t) / dx));
+            }
+            return Bez(u, 1f, 1f);
+        }
+
+        static float Bez(float u, float p1, float p2) { float v = 1 - u; return 3 * v * v * u * p1 + 3 * v * u * u * p2 + u * u * u; }
+        static float BezD(float u, float p1, float p2) { float v = 1 - u; return 3 * v * v * p1 + 6 * v * u * (p2 - p1) + 3 * u * u * (1 - p2); }
+
+        // Windows' "Animation effects" switch; off means fade only, no movement.
+        public static bool Motion
+        {
+            get { int on = 1; N.SystemParametersInfo(0x1042, 0, ref on, 0); return on != 0; } // SPI_GETCLIENTAREAANIMATION
+        }
+
+        // Opaque popups: fade in while rising 6 px into place. Call before the window is shown.
+        public static void Enter(Form f)
+        {
+            int top = f.Top, dy = Motion ? S(6) : 0;
+            f.Opacity = 0;
+            f.Top = top + dy;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var t = new Timer { Interval = 10 };
+            t.Tick += delegate
+            {
+                if (f.IsDisposed) { t.Dispose(); return; }
+                float e = EaseOut(clock.ElapsedMilliseconds / EnterMs);
+                f.Opacity = e;
+                f.Top = top + (int)Math.Round(dy * (1 - e));
+                if (e >= 1) t.Dispose();
+            };
+            t.Start();
         }
 
         public static string DayName(DayOfWeek d)

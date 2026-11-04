@@ -276,7 +276,7 @@ namespace Lilbar
                 Pin p = pins[i];
                 int idx = i;
                 bool shown = !Config.Current.PinHidden.Contains(p.Name);
-                Rectangle row = Card(g, x, w, ref y, Sys.IconOf(p.Exe.Length > 0 ? p.Exe : p.Lnk), p.Name, null);
+                Rectangle row = Card(g, x, w, ref y, Sys.IconOf(p.Exe.Length > 0 ? p.Exe : p.Lnk, S(20)), p.Name, null);
                 int right = row.Right - S(12);
                 right = Toggle(g, row, right, shown, () =>
                 {
@@ -358,7 +358,7 @@ namespace Lilbar
             {
                 string path = apps[i];
                 int idx = i;
-                row = Card(g, x, w, ref y, Sys.IconOf(path), Path.GetFileNameWithoutExtension(path), path);
+                row = Card(g, x, w, ref y, Sys.IconOf(path, S(20)), Path.GetFileNameWithoutExtension(path), path);
                 int right = row.Right - S(12);
                 right = Button(g, row, right, "✕", true, () => { apps.RemoveAt(idx); Config.Apply(); });
                 right = Button(g, row, right, "▼", idx < apps.Count - 1, () => Swap(apps, idx, idx + 1));

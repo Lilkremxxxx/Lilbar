@@ -80,6 +80,17 @@ namespace Lilbar
         [StructLayout(LayoutKind.Sequential)] public struct MEMSTATUS { public uint dwLength, dwMemoryLoad; public ulong total, avail, totalPage, availPage, totalVirtual, availVirtual, availExtended; }
         [StructLayout(LayoutKind.Sequential)] public struct ACCENT { public int AccentState, AccentFlags; public uint GradientColor; public int AnimationId; }
         [StructLayout(LayoutKind.Sequential)] public struct WCAD { public int Attribute; public IntPtr Data; public int SizeOfData; }
+        [DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action, uint param, ref int value, uint flags);
+        [DllImport("gdi32.dll")] public static extern int GetObject(IntPtr h, int size, ref DIBSECTION ds);
+        [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr h);
+        [DllImport("kernel32.dll")] public static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr min, IntPtr max);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+        public static extern void SHCreateItemFromParsingName(string path, IntPtr bc, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory f);
+        [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        public interface IShellItemImageFactory { [PreserveSig] int GetImage(SIZE size, int flags, out IntPtr hbm); }
+        [StructLayout(LayoutKind.Sequential)] public struct SIZE { public int cx, cy; }
+        [StructLayout(LayoutKind.Sequential)] public struct BITMAP { public int bmType, bmWidth, bmHeight, bmWidthBytes; public ushort bmPlanes, bmBitsPixel; public IntPtr bmBits; }
+        [StructLayout(LayoutKind.Sequential)] public struct DIBSECTION { public BITMAP dsBm; public BITMAPINFOHEADER dsBmih; public uint f0, f1, f2; public IntPtr dshSection; public uint dsOffset; }
         [StructLayout(LayoutKind.Sequential)] public struct BITMAPINFOHEADER { public uint biSize; public int biWidth, biHeight; public ushort biPlanes, biBitCount; public uint biCompression, biSizeImage; public int biXPelsPerMeter, biYPelsPerMeter; public uint biClrUsed, biClrImportant; }
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         public struct SHFILEINFO { public IntPtr hIcon; public int iIcon; public uint dwAttributes; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szDisplayName; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName; }
@@ -485,22 +496,63 @@ namespace Lilbar
             return (int)m.dwMemoryLoad;
         }
 
-        // Shell icon without the shortcut arrow; works for .lnk, .exe and shell targets.
-        public static Bitmap IconOf(string path)
+        public static Bitmap IconOf(string path) { return IconOf(path, Glass.S(32)); }
+
+        // Shell icon without the shortcut arrow, at exactly px pixels so it is drawn 1:1 and stays sharp.
+        // Works for .lnk, .exe and shell targets.
+        public static Bitmap IconOf(string path, int px)
         {
             if (string.IsNullOrEmpty(path)) return null;
             Bitmap b;
-            if (icons.TryGetValue(path, out b)) return b;
+            string key = px + "|" + path;
+            if (icons.TryGetValue(key, out b)) return b;
             string target = path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) ? LinkTarget(path) : "";
-            var fi = new N.SHFILEINFO();
-            N.SHGetFileInfo(File.Exists(target) ? target : path, 0, ref fi, (uint)Marshal.SizeOf(typeof(N.SHFILEINFO)), 0x100); // SHGFI_ICON | SHGFI_LARGEICON
-            if (fi.hIcon != IntPtr.Zero)
+            string src = File.Exists(target) ? target : path;
+            b = ShellImage(src, px);
+            if (b == null)
             {
-                using (Icon ic = Icon.FromHandle(fi.hIcon)) b = ic.ToBitmap();
-                N.DestroyIcon(fi.hIcon);
+                var fi = new N.SHFILEINFO();
+                N.SHGetFileInfo(src, 0, ref fi, (uint)Marshal.SizeOf(typeof(N.SHFILEINFO)), 0x100); // SHGFI_ICON | SHGFI_LARGEICON
+                if (fi.hIcon != IntPtr.Zero)
+                {
+                    using (Icon ic = Icon.FromHandle(fi.hIcon)) b = ic.ToBitmap();
+                    N.DestroyIcon(fi.hIcon);
+                }
             }
-            icons[path] = b;
+            icons[key] = b;
             return b;
+        }
+
+        // The shell picks the icon frame closest to px (most apps ship 16/24/32/48) instead of us resampling a 32 px one.
+        static Bitmap ShellImage(string path, int px)
+        {
+            IntPtr hbm = IntPtr.Zero;
+            try
+            {
+                N.IShellItemImageFactory f;
+                N.SHCreateItemFromParsingName(path, IntPtr.Zero, typeof(N.IShellItemImageFactory).GUID, out f);
+                try { if (f.GetImage(new N.SIZE { cx = px, cy = px }, 0x4, out hbm) != 0) return null; } // SIIGBF_ICONONLY
+                finally { Marshal.ReleaseComObject(f); }
+                var ds = new N.DIBSECTION();
+                if (N.GetObject(hbm, Marshal.SizeOf(typeof(N.DIBSECTION)), ref ds) == 0 || ds.dsBm.bmBits == IntPtr.Zero || ds.dsBm.bmBitsPixel != 32) return null;
+                int w = ds.dsBm.bmWidth, h = ds.dsBm.bmHeight, stride = ds.dsBm.bmWidthBytes;
+                bool bottomUp = ds.dsBmih.biHeight > 0;
+                var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb); // straight (not premultiplied) BGRA; PArgb here fringes the edges
+                BitmapData bd = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, bmp.PixelFormat);
+                var row = new byte[w * 4];
+                bool anyAlpha = false;
+                for (int y = 0; y < h; y++)
+                {
+                    Marshal.Copy(new IntPtr(ds.dsBm.bmBits.ToInt64() + (long)(bottomUp ? h - 1 - y : y) * stride), row, 0, row.Length);
+                    for (int i = 3; i < row.Length && !anyAlpha; i += 4) anyAlpha = row[i] != 0;
+                    Marshal.Copy(row, 0, new IntPtr(bd.Scan0.ToInt64() + (long)y * bd.Stride), row.Length);
+                }
+                bmp.UnlockBits(bd);
+                if (!anyAlpha) { bmp.Dispose(); return null; } // no alpha channel: the SHGetFileInfo path handles it
+                return bmp;
+            }
+            catch (Exception) { return null; }
+            finally { if (hbm != IntPtr.Zero) N.DeleteObject(hbm); }
         }
     }
 
@@ -640,7 +692,7 @@ namespace Lilbar
                 string lnk = p.Lnk;
                 list.Add(new AppItem
                 {
-                    Title = p.Name, Icon = Sys.IconOf(exe.Length > 0 ? exe : lnk), Running = mine.Count > 0, Active = mine.Exists(w => w.Active),
+                    Title = p.Name, Icon = Sys.IconOf(exe.Length > 0 ? exe : lnk, AppIcon), Running = mine.Count > 0, Active = mine.Exists(w => w.Active),
                     Click = mine.Count > 0 ? (Action)(() => Sys.Activate(mine[0].Hwnd)) : () => Sys.Launch(lnk)
                 });
             }
@@ -648,10 +700,13 @@ namespace Lilbar
             {
                 if (used.Contains(w.Hwnd)) continue;
                 IntPtr h = w.Hwnd;
-                list.Add(new AppItem { Title = w.Title, Icon = Sys.IconOf(w.Exe), Running = true, Active = w.Active, Click = () => Sys.Activate(h) });
+                list.Add(new AppItem { Title = w.Title, Icon = Sys.IconOf(w.Exe, AppIcon), Running = true, Active = w.Active, Click = () => Sys.Activate(h) });
             }
             return list;
         }
+
+        // App icons: 24 px at 100 % like the Windows taskbar, fetched at that size and drawn 1:1.
+        static int AppIcon { get { return S(24); } }
 
         Seg AppsSeg(int slot)
         {
@@ -663,7 +718,7 @@ namespace Lilbar
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);
-                    int ax = r.X + S(4), sy = r.Y + (r.Height - slot) / 2, icon = slot - S(10);
+                    int ax = r.X + S(4), sy = r.Y + (r.Height - slot) / 2, icon = AppIcon;
                     foreach (AppItem it in items)
                     {
                         var c = new Rectangle(ax, sy, slot, slot);
@@ -697,16 +752,16 @@ namespace Lilbar
                         foreach (string p in apps)
                         {
                             string path = p;
-                            items.Add(new PopItem { Icon = Sys.IconOf(path), Tip = Path.GetFileNameWithoutExtension(path), Up = bb => { ClosePopup(); Sys.Launch(path); } });
+                            items.Add(new PopItem { Icon = Sys.IconOf(path, S(24)), Tip = Path.GetFileNameWithoutExtension(path), Up = bb => { ClosePopup(); Sys.Launch(path); } });
                         }
                         TogglePopup("folder", name, items, true, ToScreen(r));
                     }, apps.Count == 0 ? name + ": bấm để chọn app" : name, false);
                     if (hov || popupKey == "folder") Glass.Fill(g, r, S(10), Color.FromArgb(30, 255, 255, 255));
                     if (apps.Count == 0) { Glass.Center(g, "+", Glass.Big, Glass.Dim, r); return; }
-                    int m = S(14), gp = S(3), ox = r.X + (r.Width - (2 * m + gp)) / 2, oy = r.Y + (r.Height - (2 * m + gp)) / 2;
+                    int m = S(16), gp = S(2), ox = r.X + (r.Width - (2 * m + gp)) / 2, oy = r.Y + (r.Height - (2 * m + gp)) / 2;
                     for (int i = 0; i < Math.Min(4, apps.Count); i++)
                     {
-                        Bitmap ic = Sys.IconOf(apps[i]);
+                        Bitmap ic = Sys.IconOf(apps[i], m);
                         if (ic != null) g.DrawImage(ic, new Rectangle(ox + (i % 2) * (m + gp), oy + (i / 2) * (m + gp), m, m));
                     }
                 }
@@ -799,7 +854,7 @@ namespace Lilbar
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);
-                    int x = r.X + S(4), ic = S(18), cy = r.Y + r.Height / 2;
+                    int x = r.X + S(4), ic = S(16), cy = r.Y + r.Height / 2;
                     foreach (TrayIcon t in pinned)
                     {
                         var c = new Rectangle(x, r.Y + S(3), cell, r.Height - S(6));
@@ -1051,7 +1106,22 @@ namespace Lilbar
             TrayHost.BroadcastTaskbarCreated(); // running apps re-register their tray icons with us
         }
 
-        public static void Tick() { Model.Tick(PostRefresh); Refresh(); }
+        static int ticks;
+
+        public static void Tick()
+        {
+            Model.Tick(PostRefresh);
+            Refresh();
+            if (++ticks % 600 == 20) Trim(); // 20 s after start, then every 10 minutes
+        }
+
+        // Give back pages the dock isn't touching (startup, closed popups and Settings); they fault back in if needed.
+        static void Trim()
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            N.SetProcessWorkingSetSize(Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1));
+        }
 
         static void OnDisplays(object s, EventArgs e) { ui.Post(delegate { if (!quitting) BuildDocks(); }, null); }
 
@@ -1167,6 +1237,9 @@ namespace Lilbar
             int c = Sys.Cpu(), r = Sys.Ram();
             check(c >= 0 && c <= 100 && r > 0 && r <= 100, "cpu " + c + " ram " + r);
             check(Sys.IconOf(Environment.ExpandEnvironmentVariables(@"%WINDIR%\explorer.exe")) != null, "icon of explorer.exe");
+            Bitmap ic24 = Sys.IconOf(Environment.ExpandEnvironmentVariables(@"%WINDIR%\explorer.exe"), 24);
+            check(ic24 != null && ic24.Width == 24 && ic24.GetPixel(12, 12).A > 0, "explorer.exe icon fetched at exactly 24 px");
+            check(Glass.EaseOut(0) == 0 && Glass.EaseOut(1) == 1 && Glass.EaseOut(0.25f) > 0.6f && Glass.EaseOut(0.5f) > Glass.EaseOut(0.25f), "ease-out curve");
             Claude.Parse("{\"five_hour\":{\"utilization\":33.0,\"resets_at\":\"2026-11-04T05:30:00.230316+00:00\"},\"seven_day\":{\"utilization\":3.0,\"resets_at\":null}}");
             check(Claude.Session != null && Claude.Session.Pct == 33 && Claude.Session.Reset.ToUniversalTime().Hour == 5, "claude usage parse");
             Weather.Parse(new JavaScriptSerializer().Deserialize<Dictionary<string, object>>("{\"current\":{\"temperature_2m\":31.4,\"weather_code\":2},\"daily\":{\"temperature_2m_max\":[33.1],\"temperature_2m_min\":[25.0]}}"));
