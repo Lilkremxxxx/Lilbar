@@ -150,7 +150,7 @@ namespace Lilbar
             using (GraphicsPath p = Glass.Round(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), S(10)))
             using (var pen = new Pen(Edge)) g.DrawPath(pen, p);
             int tx = r.X + S(14);
-            if (icon != null) { g.DrawImage(icon, new Rectangle(r.X + S(12), r.Y + S(14), S(20), S(20))); tx = r.X + S(42); }
+            if (icon != null) { Glass.Image(g, icon, new Rectangle(r.X + S(12), r.Y + S(14), S(20), S(20))); tx = r.X + S(42); }
             int tw = r.Right - tx - S(150);
             if (sub == null) Glass.Text(g, label, Glass.Body, Color.White, new Rectangle(tx, r.Y, tw, r.Height), StringAlignment.Near);
             else

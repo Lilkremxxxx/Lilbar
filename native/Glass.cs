@@ -181,6 +181,21 @@ namespace Lilbar
 
         public static void Center(Graphics g, string s, Font f, Color c, Rectangle r) { Text(g, s, f, c, r, StringAlignment.Center); }
 
+        // Icons come from other apps (tray) and the shell; a broken one is skipped instead of taking the dock down.
+        public static void Image(Graphics g, Bitmap b, Rectangle r)
+        {
+            if (b == null) return;
+            try { g.DrawImage(b, r); }
+            catch (ArgumentException) { }
+            catch (InvalidOperationException) { }
+        }
+
+        public static int WidthOf(Bitmap b)
+        {
+            try { return b == null ? 0 : b.Width; }
+            catch (ArgumentException) { return 0; }
+        }
+
         // A coolicons line icon when one has that name, otherwise the glyph as text in font f.
         public static void Icon(Graphics g, string nameOrGlyph, Font f, Color c, Rectangle r, int px)
         {

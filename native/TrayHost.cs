@@ -187,7 +187,18 @@ namespace Lilbar
         static Bitmap ToBitmap(IntPtr h)
         {
             if (h == IntPtr.Zero) return null;
-            try { using (Icon ic = Icon.FromHandle(h)) return ic.ToBitmap(); } // copy now: the app owns the handle
+            // Copy into a bitmap we own right away: the app owns the handle and may destroy or reuse it at any time.
+            try
+            {
+                using (Icon ic = Icon.FromHandle(h))
+                using (Bitmap raw = ic.ToBitmap())
+                {
+                    if (raw.Width <= 0 || raw.Height <= 0 || raw.Width > 256 || raw.Height > 256) return null;
+                    var b = new Bitmap(raw.Width, raw.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                    using (Graphics g = Graphics.FromImage(b)) g.DrawImage(raw, 0, 0, raw.Width, raw.Height);
+                    return b;
+                }
+            }
             catch (Exception) { return null; }
         }
 

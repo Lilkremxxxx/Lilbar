@@ -134,9 +134,9 @@ namespace Lilbar
                     if (i == hover) Glass.Fill(g, Rectangle.Inflate(c, -S(2), -S(2)), S(10), Color.FromArgb(38, 255, 255, 255));
                     if (grid)
                     {
-                        int s = it.Icon != null && it.Icon.Width < S(labels ? 32 : 24) ? it.Icon.Width : S(labels ? 32 : 24); // never upscale a small tray icon
+                        int iw = Glass.WidthOf(it.Icon), s = iw > 0 && iw < S(labels ? 32 : 24) ? iw : S(labels ? 32 : 24); // never upscale a small tray icon
                         int iy = labels ? c.Y + S(9) : c.Y + (c.Height - s) / 2;
-                        if (it.Icon != null) g.DrawImage(it.Icon, new Rectangle(c.X + (c.Width - s) / 2, iy, s, s));
+                        if (it.Icon != null) Glass.Image(g, it.Icon, new Rectangle(c.X + (c.Width - s) / 2, iy, s, s));
                         else if (it.Glyph != null) Glass.Center(g, it.Glyph, Glass.Glyph, Color.White, new Rectangle(c.X, iy, c.Width, s));
                         if (labels) Glass.Center(g, it.Text ?? "", Glass.Caption, Color.White, new Rectangle(c.X + S(3), c.Y + S(48), c.Width - S(6), S(20)));
                         if (it.Badge != null)

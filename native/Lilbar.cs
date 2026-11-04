@@ -1012,7 +1012,7 @@ namespace Lilbar
                         if (primary) ti.Rect = ToScreen(c);
                         bool hov = AddHit(c, b => TrayHost.MouseDown(ti, b == MouseButtons.Right), b => TrayHost.MouseUp(ti, b == MouseButtons.Right), ti.Tip, true);
                         if (hov) Glass.Fill(g, c, S(8), Color.FromArgb(36, 255, 255, 255));
-                        g.DrawImage(ti.Icon, new Rectangle(c.X + (cell - ic) / 2, cy - ic / 2, ic, ic));
+                        Glass.Image(g, ti.Icon, new Rectangle(c.X + (cell - ic) / 2, cy - ic / 2, ic, ic));
                         if (Editing && ti.Exe.Length > 0)
                             editHits.Add(new Hit { R = Badge(g, c, "", Color.FromArgb(235, 70, 70, 78)), Up = b => PinTray(ti, false), Tip = "Đưa vào trong mũi tên" });
                         x += cell;
@@ -1513,7 +1513,8 @@ namespace Lilbar
                 if (!fresh) return 0; // already running
                 N.SetProcessDPIAware();
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; // the 4.x runtime may default to older TLS
-                Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e) { Taskbar.Log(e.Exception); Manager.Quit(null); };
+                // A drawing or click error must not take the taskbar away: log it and keep running.
+                Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e) { Taskbar.Log(e.Exception); };
                 AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e) { Taskbar.Log(e.ExceptionObject as Exception); Manager.Shutdown(); };
                 // The loop can end without the docks closing (taskkill posts WM_CLOSE to hidden helper windows too).
                 try { Manager.Start(); Application.Run(); }
