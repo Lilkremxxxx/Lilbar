@@ -23,6 +23,8 @@ _Last updated: 2026-11-04 by claude-code_
 - `Lilbar.cs`: P/Invoke, `Taskbar`, `Claude`, `Sys`, `Dock` (mỗi màn hình một dock, ô theo `Config.Items`), `Manager` (vòng đời, timer, dựng lại dock khi đổi màn hình), `Program`.
 - `TrayHost.cs`: khay hệ thống. Cửa sổ `Shell_TrayWnd` riêng giữ trên explorer trong z-order để nhận `Shell_NotifyIcon` (WM_COPYDATA), chuyển tiếp mọi thứ cho explorer, gửi click theo NOTIFYICON_VERSION. Ghim cạnh mũi tên mặc định theo `HKCU\Control Panel\NotifyIconSettings\*\IsPromoted`. Port từ ManagedShell (Apache-2.0).
 - `Services.cs`: `Config` (`%APPDATA%\Lilbar\config.json`), `Weather` (ipinfo.io + open-meteo, 15 phút), `Model` (dữ liệu chung, chữ ký để chỉ vẽ lại khi đổi).
+- `Widgets.cs`: dữ liệu widget. WinRT (đang phát `GlobalSystemMediaTransportControls`, radio Wi-Fi/Bluetooth) gọi bằng cách chờ `IAsyncOperation.Status` vì csc có sẵn không có cầu nối await; luồng nền `Bg` mỗi giây. Âm lượng qua Core Audio COM, mạng theo card có default gateway, nhiệt độ từ bộ đếm "Thermal Zone Information" (cảm biến ACPI, không phải lõi CPU), hẹn giờ, pomodoro, GitHub (token cá nhân mã hoá DPAPI), danh sách thành phố.
+- `DockWidgets.cs`: phần vẽ các widget trên (Dock là partial class) và `TodoPopup` (cửa sổ đặc để ô nhập chữ hoạt động).
 - `Popup.cs`: popup kính cho mũi tên khay, thư mục, menu chuột phải. `Settings.cs`: cửa sổ cài đặt (Thanh, Ứng dụng, Khay hệ thống, Thư mục). `Glass.cs`: hàm vẽ chung.
 - Phần mô tả lớp bên dưới là của lần viết trước, vẫn đúng cho các lớp còn giữ.
 - Lớp `N`: P/Invoke user32/kernel32/dwmapi/shell32/gdi32.
@@ -86,4 +88,5 @@ Current phase: 02_dock_mvp — see `Process_phases/README.md`.
 | 2026-11-04 | claude-code | pipeline | Viết lại thành `native/Lilbar.exe` C# + kính acrylic; Electron thành bản cũ | user: "Ok viết lại bằng c# đi"; ưu tiên ít tài nguyên + glassmorphism |
 | 2026-11-04 | claude-code | data | Mã nguồn công khai tại https://github.com/Lilkremxxxx/Lilbar; exe và clone lumabar không đưa lên | user yêu cầu cập nhật repo từ giờ |
 | 2026-11-04 | claude-code | pipeline + data | Thay hẳn taskbar (hook giữ ẩn, bỏ auto-hide), cao 48px, nền trong suốt, widget Claude Code đọc token Claude Code và gọi API usage của Anthropic | user: phím Windows bật thanh cũ; muốn fit chiều cao, hiệu ứng clear, widget usage Claude |
+| 2026-11-04 | claude-code | pipeline + data | Thêm 11 widget và tab Tiện ích; build tham chiếu WinMetadata của Windows; dữ liệu mới trong config: Cities, TimerMinutes, FocusMin/BreakMin/LongBreakMin, Todos, GitHubToken (DPAPI); GitHub gửi token tới api.github.com | user: "làm những thứ bạn đề xuất" |
 | 2026-11-04 | claude-code | pipeline + data | Tách thành nhiều file; thêm khay hệ thống (tray host), ô Hôm nay & thời tiết (gửi IP tới ipinfo.io), ô thư mục, menu chuột phải, cửa sổ cài đặt, file cấu hình, dock cho mọi màn hình | user yêu cầu 6 tính năng; 103 widget kiểu lumabar để chờ user chọn |

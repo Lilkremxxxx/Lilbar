@@ -18,6 +18,12 @@ namespace Lilbar
         public bool On { get; set; }
     }
 
+    public class TodoItem
+    {
+        public string Text { get; set; }
+        public bool Done { get; set; }
+    }
+
     // User settings in %APPDATA%\Lilbar\config.json. Public with properties so JavaScriptSerializer can read it.
     public class Config
     {
@@ -28,12 +34,23 @@ namespace Lilbar
         public string FolderName { get; set; }
         public List<string> FolderApps { get; set; }   // .exe/.lnk paths
         public string Align { get; set; }              // "center" | "left"
+        public List<string> Cities { get; set; }       // world clock time zone ids, "" = slot off
+        public int TimerMinutes { get; set; }
+        public int FocusMin { get; set; }
+        public int BreakMin { get; set; }
+        public int LongBreakMin { get; set; }
+        public List<TodoItem> Todos { get; set; }
+        public string GitHubToken { get; set; }        // DPAPI-protected, base64
 
         // Declared before Current: static fields initialize in order and Normalize reads this.
+        // Everything fits a 1920 px screen with the defaults; the rest are one switch away in Settings.
         public static readonly string[][] Defaults =
         {
-            new[] { "apps", "1" }, new[] { "folder", "1" }, new[] { "system", "1" }, new[] { "claude", "1" },
-            new[] { "tray", "1" }, new[] { "battery", "1" }, new[] { "today", "1" }, new[] { "clock", "0" },
+            new[] { "apps", "1" }, new[] { "folder", "1" }, new[] { "media", "1" }, new[] { "system", "1" },
+            new[] { "network", "1" }, new[] { "temp", "0" }, new[] { "claude", "1" }, new[] { "todos", "1" },
+            new[] { "timer", "0" }, new[] { "pomodoro", "0" }, new[] { "github", "0" }, new[] { "worldclock", "0" },
+            new[] { "tray", "1" }, new[] { "toggles", "0" }, new[] { "volume", "1" }, new[] { "battery", "1" },
+            new[] { "today", "1" }, new[] { "flipclock", "0" }, new[] { "clock", "0" },
         };
         public static Config Current = Normalize(new Config());
         public static int Version;
@@ -60,6 +77,15 @@ namespace Lilbar
             if (c.FolderApps == null) c.FolderApps = new List<string>();
             if (string.IsNullOrEmpty(c.FolderName)) c.FolderName = "Thư mục";
             if (c.Align != "left") c.Align = "center";
+            if (c.Cities == null) c.Cities = new List<string> { "Tokyo Standard Time", "GMT Standard Time", "Eastern Standard Time" };
+            while (c.Cities.Count < 3) c.Cities.Add("");
+            if (c.Cities.Count > 3) c.Cities.RemoveRange(3, c.Cities.Count - 3);
+            if (c.TimerMinutes <= 0) c.TimerMinutes = 5;
+            if (c.FocusMin <= 0) c.FocusMin = 25;
+            if (c.BreakMin <= 0) c.BreakMin = 5;
+            if (c.LongBreakMin <= 0) c.LongBreakMin = 15;
+            if (c.Todos == null) c.Todos = new List<TodoItem>();
+            c.Todos.RemoveAll(t => t == null || string.IsNullOrEmpty(t.Text));
             return c;
         }
 
@@ -205,6 +231,11 @@ namespace Lilbar
             TrayHost.Prune();
             if (Config.Has("claude")) Claude.MaybeFetch(asyncDone);
             if (Config.Has("today")) Weather.MaybeFetch(asyncDone);
+            if (Config.Has("github")) GitHub.MaybeFetch(asyncDone);
+            if (Config.Has("network")) Net.Tick();
+            if (Config.Has("volume")) Audio.Tick();
+            Countdown.Tick(); // timers keep running even while their tiles are hidden
+            Pomodoro.Tick();
         }
 
         public static List<Pin> OrderedPins(bool includeHidden)
@@ -235,6 +266,12 @@ namespace Lilbar
             s.Append(Claude.Available).Append(Claude.Error).Append(LimitSig(Claude.Session)).Append(LimitSig(Claude.Week));
             s.Append(Weather.Temp).Append(Weather.Code).Append(Weather.Error);
             s.Append('t').Append(TrayHost.Version).Append('c').Append(Config.Version);
+            s.Append('m').Append(Media.Has).Append(Media.Title).Append(Media.Playing).Append(Media.Thumb != null);
+            s.Append('n').Append(Net.Fmt(Net.Down)).Append(Net.Fmt(Net.Up)).Append('v').Append(Audio.Level).Append(Audio.Muted);
+            foreach (Radios.R r in Radios.List) s.Append(r.WiFi).Append(r.On);
+            s.Append('h').Append(Thermal.C).Append('x').Append(Countdown.Remaining()).Append(Countdown.Running);
+            s.Append('p').Append(Pomodoro.Remaining()).Append(Pomodoro.Running).Append(Pomodoro.Phase).Append(Pomodoro.Round);
+            s.Append('g').Append(GitHub.Unread).Append(GitHub.Total).Append(GitHub.Error);
             return s.ToString();
         }
     }

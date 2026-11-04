@@ -14,7 +14,8 @@ _Last updated: 2026-11-04 by claude-code_
 | T-008 | Now Playing (WinRT GlobalSystemMediaTransportControls) | blocked: không gọi WinRT từ Node thuần | P2 | claude-code | backlog | user | hiện bài đang phát + play/pause | 2026-11-03 |
 | T-013 | Bỏ bản Electron (main.js, win32.js, preload.js, index.html, node_modules, package*.json) | blocked: chờ user xác nhận xoá | P2 | human | 02_dock_mvp | claude-code | user đồng ý, đã xoá | 2026-11-04 |
 | T-010 | Ẩn dock khi game/video fullscreen; tự chạy khi khởi động | todo | P2 | claude-code | backlog | claude-code | dock biến mất khi app fullscreen | 2026-11-04 |
-| T-018 | Thêm widget kiểu lumabar (chức năng giống, thiết kế riêng): chờ user chọn nhóm | blocked: chờ user chọn | P2 | human | backlog | user | user chọn danh sách | 2026-11-04 |
+| T-024 | Widget độ sáng màn hình | blocked: màn hình không hỗ trợ DDC/CI, WMI không có (máy bàn) | P2 | human | backlog | claude-code | bật DDC/CI trong menu màn hình rồi làm | 2026-11-04 |
+| T-025 | Thêm nhóm widget kiểu lumabar tiếp theo (user chọn) | todo | P2 | human | backlog | user | user chọn nhóm | 2026-11-04 |
 | T-023 | Kiểm chứng màn hình thứ hai | blocked: máy chỉ có 1 màn hình | P1 | human | 02_dock_mvp | user | cắm màn hình 2, dock hiện và thanh cũ ẩn | 2026-11-04 |
 | T-011 | Nhiều cửa sổ cùng app: click pinned đang chạy nên cho chọn cửa sổ (hiện tại lấy cửa sổ đầu) | todo | P2 | claude-code | backlog | claude-code | - | 2026-11-04 |
 
@@ -38,6 +39,7 @@ _Last updated: 2026-11-04 by claude-code_
 | T-020 | Ô Hôm nay & thời tiết | 2026-11-04 | `TodaySeg`, `Weather`; 34° lúc test |
 | T-021 | Ô thư mục app + popup | 2026-11-04 | `FolderSeg`, `Popup.cs` |
 | T-022 | Menu chuột phải + cửa sổ cài đặt (widget, thứ tự, app ghim, khay, thư mục, căn lề) | 2026-11-04 | `Settings.cs`, `Config` |
+| T-018 | Bộ widget đề xuất: đồng hồ thế giới, đồng hồ lật, mạng, nhiệt độ, Wi-Fi/Bluetooth, đang phát, âm lượng, hẹn giờ, pomodoro, việc cần làm, GitHub + tab Tiện ích | 2026-11-04 | `Widgets.cs`, `DockWidgets.cs`; self-check 24/24; chụp 2 bố cục thử |
 
 ## Rules for agents
 - New task -> next free ID, new row in Active.

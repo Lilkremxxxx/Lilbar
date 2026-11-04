@@ -428,6 +428,22 @@ namespace Lilbar
             catch (Exception e) { Taskbar.Log(e); }
         }
 
+        // The shell draws a shortcut arrow on .lnk icons; the target's own icon has none.
+        static string LinkTarget(string lnk)
+        {
+            try
+            {
+                Type t = Type.GetTypeFromProgID("WScript.Shell");
+                object sh = Activator.CreateInstance(t);
+                object sc = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { lnk });
+                string target = (string)sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null) ?? "";
+                Marshal.ReleaseComObject(sc);
+                Marshal.ReleaseComObject(sh);
+                return target;
+            }
+            catch (Exception) { return ""; }
+        }
+
         public static List<Pin> Pinned()
         {
             var list = new List<Pin>();
@@ -475,8 +491,9 @@ namespace Lilbar
             if (string.IsNullOrEmpty(path)) return null;
             Bitmap b;
             if (icons.TryGetValue(path, out b)) return b;
+            string target = path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) ? LinkTarget(path) : "";
             var fi = new N.SHFILEINFO();
-            N.SHGetFileInfo(path, 0, ref fi, (uint)Marshal.SizeOf(typeof(N.SHFILEINFO)), 0x100); // SHGFI_ICON | SHGFI_LARGEICON
+            N.SHGetFileInfo(File.Exists(target) ? target : path, 0, ref fi, (uint)Marshal.SizeOf(typeof(N.SHFILEINFO)), 0x100); // SHGFI_ICON | SHGFI_LARGEICON
             if (fi.hIcon != IntPtr.Zero)
             {
                 using (Icon ic = Icon.FromHandle(fi.hIcon)) b = ic.ToBitmap();
@@ -488,9 +505,9 @@ namespace Lilbar
     }
 
     // One dock per monitor, in the strip that monitor's taskbar used. Tiles come from Config.Items, in order.
-    class Dock : Form
+    partial class Dock : Form
     {
-        class Hit { public Rectangle R; public Action<MouseButtons> Down, Up; public string Tip; public bool Right; }
+        class Hit { public Rectangle R; public Action<MouseButtons> Down, Up; public Action<int> Wheel; public string Tip; public bool Right; }
         class Seg { public int W; public Action<Graphics, Rectangle> Draw; }
         class AppItem { public string Title; public Bitmap Icon; public bool Running, Active; public Action Click; }
 
@@ -502,7 +519,7 @@ namespace Lilbar
         Bitmap buf;
         int H, hover = -1;
         bool reserved;
-        Popup popup;
+        Form popup;
         string popupKey, justClosed;
 
         static int S(float v) { return Glass.S(v); }
@@ -563,9 +580,9 @@ namespace Lilbar
             base.OnFormClosing(e);
         }
 
-        bool AddHit(Rectangle r, Action<MouseButtons> down, Action<MouseButtons> up, string tipText, bool right)
+        bool AddHit(Rectangle r, Action<MouseButtons> down, Action<MouseButtons> up, string tipText, bool right, Action<int> wheel = null)
         {
-            hits.Add(new Hit { R = r, Down = down, Up = up, Tip = tipText, Right = right });
+            hits.Add(new Hit { R = r, Down = down, Up = up, Tip = tipText, Right = right, Wheel = wheel });
             return hits.Count - 1 == hover;
         }
 
@@ -589,8 +606,26 @@ namespace Lilbar
                     case "battery": sg = BatterySeg(); break;
                     case "today": sg = TodaySeg(); break;
                     case "clock": sg = ClockSeg(); break;
+                    case "media": sg = MediaSeg(); break;
+                    case "network": sg = NetworkSeg(); break;
+                    case "volume": sg = VolumeSeg(); break;
+                    case "toggles": sg = TogglesSeg(); break;
+                    case "temp": sg = TempSeg(); break;
+                    case "worldclock": sg = WorldClockSeg(); break;
+                    case "flipclock": sg = FlipClockSeg(); break;
+                    case "timer": sg = TimerSeg(); break;
+                    case "pomodoro": sg = PomodoroSeg(); break;
+                    case "todos": sg = TodosSeg(); break;
+                    case "github": sg = GitHubSeg(); break;
                 }
                 if (sg != null) segs.Add(sg);
+            }
+            // shortcut: tiles that don't fit the screen width are dropped from the right; a second row would be the upgrade
+            int room = screen.Bounds.Width - S(8), used = S(8) - S(6);
+            for (int i = 0; i < segs.Count; i++)
+            {
+                used += segs[i].W + S(6);
+                if (used > room) { segs.RemoveRange(i, segs.Count - i); break; }
             }
             if (segs.Count == 0) // keep something to right-click
                 segs.Add(new Seg { W = slot + S(8), Draw = (g, r) => { Glass.Tile(g, r); Glass.Center(g, "☰", Glass.Glyph, Color.White, r); AddHit(r, null, b => ShowMenu(), "Lilbar", false); } });
@@ -921,9 +956,14 @@ namespace Lilbar
 
         void TogglePopup(string key, string title, List<PopItem> items, bool grid, Rectangle anchor)
         {
+            OpenPopup(key, () => new Popup(title, items, grid, anchor));
+        }
+
+        void OpenPopup(string key, Func<Form> make)
+        {
             if (justClosed == key) { justClosed = null; return; } // this click closed it; don't reopen
             ClosePopup();
-            var p = new Popup(title, items, grid, anchor);
+            Form p = make();
             popup = p;
             popupKey = key;
             p.FormClosed += delegate
@@ -940,7 +980,7 @@ namespace Lilbar
         void ClosePopup()
         {
             if (popup == null) return;
-            Popup p = popup;
+            Form p = popup;
             popup = null;
             popupKey = null;
             p.Close();
@@ -982,6 +1022,13 @@ namespace Lilbar
             if (h != null && h.Up != null && (e.Button == MouseButtons.Left || h.Right)) h.Up(e.Button);
             else if (e.Button == MouseButtons.Right) ShowMenu();
             justClosed = null;
+            Manager.Refresh(); // show the result of the click now, not on the next tick
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            Hit h = HitAt(e.Location);
+            if (h != null && h.Wheel != null) { h.Wheel(e.Delta > 0 ? 1 : -1); Manager.Refresh(); }
         }
     }
 
@@ -1005,6 +1052,7 @@ namespace Lilbar
             TrayHost.Start();
             Taskbar.Hide();
             Sys.Cpu();
+            Bg.Start();
             Model.Tick(PostRefresh);
             BuildDocks();
             icon = new NotifyIcon
@@ -1062,6 +1110,13 @@ namespace Lilbar
         public static void OnTaskbarCreated() { if (!quitting) Taskbar.Hide(); }
 
         public static void OpenSettings(int tab) { SettingsForm.Open(tab); }
+
+        // Timer and pomodoro alerts: a Windows notification from Lilbar's tray icon, plus a sound.
+        public static void Notify(string title, string text)
+        {
+            if (icon != null) icon.ShowBalloonTip(8000, title, text, ToolTipIcon.Info);
+            System.Media.SystemSounds.Asterisk.Play();
+        }
 
         public static void Quit(Dock closing)
         {
@@ -1141,6 +1196,25 @@ namespace Lilbar
             check(cfg.Items.Count == Config.Defaults.Length && cfg.Items[0].Id == "clock" && cfg.Items[0].On && cfg.Align == "center", "config normalize keeps order, drops unknown and duplicates, adds missing");
             string sys = TrayHost.ExpandKnownFolder("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\x.exe");
             check(sys.EndsWith("\\System32\\x.exe", StringComparison.OrdinalIgnoreCase), "known folder path " + sys);
+            GitHub.ParseCalendar("{\"data\":{\"viewer\":{\"login\":\"me\",\"contributionsCollection\":{\"contributionCalendar\":{\"totalContributions\":7,\"weeks\":[{\"contributionDays\":[{\"contributionCount\":0},{\"contributionCount\":2},{\"contributionCount\":3}]},{\"contributionDays\":[{\"contributionCount\":2},{\"contributionCount\":0}]}]}}}}}");
+            check(GitHub.Login == "me" && GitHub.Total == 7 && GitHub.Days.Length == 5 && GitHub.Streak == 3, "github calendar parse, streak skips an empty today");
+            check(Secret.Unprotect(Secret.Protect("ghp_test")) == "ghp_test" && Secret.Unprotect("garbage") == null, "token DPAPI round trip");
+            var seq = new StringBuilder();
+            for (int i = 0; i < 9; i++) { seq.Append(Pomodoro.Phase); Pomodoro.Skip(); }
+            check(seq.ToString() == "010101020", "pomodoro cycle " + seq);
+            Pomodoro.Reset();
+            check(Net.Fmt(1500000) == "1.5 MB/s" && Net.Fmt(2400) == "2 KB/s" && Net.Fmt(12) == "12 B/s", "network speed format");
+            check(Array.TrueForAll(Cities.All, z => z[0] == "" || TimeZoneInfo.FindSystemTimeZoneById(z[0]) != null), "world clock time zones exist");
+            Audio.Tick();
+            check(Audio.Level >= 0 && Audio.Level <= 100, "volume " + Audio.Level + "% on " + Audio.Device);
+            Thermal.Poll();
+            check(Thermal.C > -50 && Thermal.C < 130, "thermal zone " + Thermal.C + "C");
+            Net.Tick(); Thread.Sleep(500); Net.Tick();
+            check(Net.Down >= 0 && Net.History.Count == 1, "network sample " + Net.Fmt(Net.Down));
+            try { Media.Poll(); check(true, "media session: " + (Media.Has ? Media.Title : "none playing")); }
+            catch (Exception e) { check(false, "media " + e.Message); }
+            try { Radios.Poll(); check(true, "radios: " + string.Join(", ", Radios.List.ConvertAll(x => (x.WiFi ? "Wi-Fi " : "Bluetooth ") + (x.On ? "on" : "off")).ToArray())); }
+            catch (Exception e) { check(false, "radios " + e.Message); }
             return fails;
         }
     }

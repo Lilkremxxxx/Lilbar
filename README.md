@@ -7,6 +7,8 @@ A lightweight clear-glass dock that replaces the Windows 11 taskbar on every mon
 - Today tile with weekday, date, time and current weather.
 - A folder tile that opens a group of apps you choose.
 - CPU/RAM rings, Claude Code usage limits, battery, clock.
+- Now playing with controls, volume, network speed, board temperature, Wi-Fi and Bluetooth switches.
+- World clocks, a flip clock, a timer, pomodoro rounds, a todo list, and GitHub notifications with your contribution grid (personal access token, stored encrypted for your Windows user).
 - Right-click the dock for Settings: turn tiles on or off, reorder them, reorder or hide pinned apps, choose which tray icons are pinned, edit the folder.
 
 One small exe, one process, about 60 MB of RAM. No install, no dependencies. Settings live in `%APPDATA%\Lilbar\config.json`.

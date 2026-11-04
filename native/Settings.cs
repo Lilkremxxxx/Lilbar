@@ -15,7 +15,7 @@ namespace Lilbar
         class Hot { public Rectangle R; public Action Click; public bool Nav; }
 
         static SettingsForm current;
-        static readonly string[] Tabs = { "Thanh", "Ứng dụng", "Khay hệ thống", "Thư mục" };
+        static readonly string[] Tabs = { "Thanh", "Ứng dụng", "Khay hệ thống", "Thư mục", "Tiện ích" };
         static readonly Dictionary<string, string[]> Names = new Dictionary<string, string[]>
         {
             { "apps", new[] { "Ứng dụng", "App ghim và cửa sổ đang mở" } },
@@ -26,11 +26,22 @@ namespace Lilbar
             { "battery", new[] { "Pin", "Tự ẩn trên máy bàn" } },
             { "today", new[] { "Hôm nay & thời tiết", "Vị trí theo IP (ipinfo.io), thời tiết từ open-meteo.com" } },
             { "clock", new[] { "Đồng hồ", null } },
+            { "media", new[] { "Đang phát", "Nhạc và video từ bất kỳ app nào báo cho Windows; tự ẩn khi không phát" } },
+            { "network", new[] { "Mạng", "Tốc độ tải xuống và tải lên" } },
+            { "volume", new[] { "Âm lượng", "Lăn chuột để chỉnh, bấm biểu tượng để tắt tiếng" } },
+            { "toggles", new[] { "Wi-Fi / Bluetooth", "Bật tắt nhanh" } },
+            { "temp", new[] { "Nhiệt độ", "Cảm biến bo mạch, không phải nhiệt độ lõi CPU" } },
+            { "worldclock", new[] { "Đồng hồ thế giới", "Chọn thành phố trong tab Tiện ích" } },
+            { "flipclock", new[] { "Đồng hồ lật", null } },
+            { "timer", new[] { "Hẹn giờ", "Lăn chuột để đổi số phút" } },
+            { "pomodoro", new[] { "Pomodoro", "Tập trung và nghỉ theo vòng" } },
+            { "todos", new[] { "Việc cần làm", null } },
+            { "github", new[] { "GitHub", "Thông báo và lịch đóng góp; cần token trong tab Tiện ích" } },
         };
         static readonly Color Bg = Color.FromArgb(255, 17, 17, 21), NavBg = Color.FromArgb(255, 23, 23, 29),
             CardBg = Color.FromArgb(255, 33, 33, 41), Edge = Color.FromArgb(255, 52, 52, 62), BoxBg = Color.FromArgb(255, 44, 44, 54);
         readonly List<Hot> hots = new List<Hot>();
-        readonly TextBox nameBox = new TextBox();
+        readonly TextBox nameBox = new TextBox(), tokenBox = new TextBox();
         readonly int navW;
         int tab, scroll, contentH;
         bool filling;
@@ -73,6 +84,15 @@ namespace Lilbar
                 Config.Apply();
             };
             Controls.Add(nameBox);
+            tokenBox.BorderStyle = BorderStyle.None;
+            tokenBox.BackColor = BoxBg;
+            tokenBox.ForeColor = Color.White;
+            tokenBox.Font = Glass.Body;
+            tokenBox.MaxLength = 255;
+            tokenBox.UseSystemPasswordChar = true;
+            tokenBox.Visible = false;
+            tokenBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; SaveToken(); } };
+            Controls.Add(tokenBox);
             Config.Changed += Invalidate;
         }
 
@@ -121,17 +141,19 @@ namespace Lilbar
             var area = new Rectangle(navW, 0, ClientSize.Width - navW, ClientSize.Height);
             g.SetClip(area);
             int x = navW + S(24), w = area.Width - S(48), y = S(22) - scroll;
-            bool showName = false;
+            bool showName = false, showToken = false;
             switch (tab)
             {
                 case 0: PaintBar(g, x, w, ref y); break;
                 case 1: PaintApps(g, x, w, ref y); break;
                 case 2: PaintTray(g, x, w, ref y); break;
                 case 3: showName = PaintFolder(g, x, w, ref y); break;
+                case 4: showToken = PaintExtras(g, x, w, ref y); break;
             }
             contentH = y + scroll + S(20);
             g.ResetClip();
             if (nameBox.Visible != showName) nameBox.Visible = showName;
+            if (tokenBox.Visible != showToken) tokenBox.Visible = showToken;
         }
 
         void Header(Graphics g, string text, int x, int w, ref int y)
@@ -329,6 +351,79 @@ namespace Lilbar
             hots.Add(new Hot { R = add, Click = AddApps });
             y += S(52);
             return visible;
+        }
+
+        // A "label: value" row with − / + style stepper buttons on the right.
+        void Stepper(Graphics g, int x, int w, ref int y, string label, string value, string less, string more, Action down, Action up)
+        {
+            Rectangle row = Card(g, x, w, ref y, null, label, null);
+            int right = row.Right - S(12);
+            right = Button(g, row, right, more, true, up);
+            right = Button(g, row, right, less, true, down);
+            Glass.Text(g, value, Glass.Body, Color.White, new Rectangle(right - S(130), row.Y, S(124), row.Height), StringAlignment.Far);
+        }
+
+        static int Step(int v, int d, int min, int max) { return Math.Max(min, Math.Min(max, v + d)); }
+
+        bool PaintExtras(Graphics g, int x, int w, ref int y)
+        {
+            Config c = Config.Current;
+            Header(g, "ĐỒNG HỒ THẾ GIỚI", x, w, ref y);
+            for (int i = 0; i < c.Cities.Count; i++)
+            {
+                int slot = i;
+                Action<int> move = d =>
+                {
+                    int n = Cities.All.Length, k = (Cities.IndexOf(c.Cities[slot]) + d + n) % n;
+                    c.Cities[slot] = Cities.All[k][0];
+                    Config.Apply();
+                };
+                Stepper(g, x, w, ref y, "Thành phố " + (i + 1), Cities.Label(c.Cities[i]), "◀", "▶", () => move(-1), () => move(1));
+            }
+
+            Header(g, "HẸN GIỜ VÀ POMODORO", x, w, ref y);
+            Stepper(g, x, w, ref y, "Hẹn giờ", c.TimerMinutes + " phút", "−", "+",
+                () => Countdown.Adjust(-1), () => Countdown.Adjust(1));
+            Stepper(g, x, w, ref y, "Tập trung", c.FocusMin + " phút", "−", "+",
+                () => { c.FocusMin = Step(c.FocusMin, -5, 5, 120); Pomodoro.Reset(); Config.Apply(); }, () => { c.FocusMin = Step(c.FocusMin, 5, 5, 120); Pomodoro.Reset(); Config.Apply(); });
+            Stepper(g, x, w, ref y, "Nghỉ ngắn", c.BreakMin + " phút", "−", "+",
+                () => { c.BreakMin = Step(c.BreakMin, -1, 1, 30); Pomodoro.Reset(); Config.Apply(); }, () => { c.BreakMin = Step(c.BreakMin, 1, 1, 30); Pomodoro.Reset(); Config.Apply(); });
+            Stepper(g, x, w, ref y, "Nghỉ dài", c.LongBreakMin + " phút", "−", "+",
+                () => { c.LongBreakMin = Step(c.LongBreakMin, -5, 5, 60); Pomodoro.Reset(); Config.Apply(); }, () => { c.LongBreakMin = Step(c.LongBreakMin, 5, 5, 60); Pomodoro.Reset(); Config.Apply(); });
+
+            Header(g, "GITHUB", x, w, ref y);
+            Note(g, "Tạo token tại github.com/settings/tokens, cần quyền notifications và read:user.", x, w, ref y);
+            Rectangle row = Card(g, x, w, ref y, null, GitHub.HasToken ? "Token mới" : "Token", null);
+            int right = Segment(g, row, row.Right - S(12), "Lưu", false, SaveToken);
+            var box = new Rectangle(row.X + S(110), row.Y + (row.Height - S(30)) / 2, right - row.X - S(116), S(30));
+            Glass.Fill(g, box, S(6), BoxBg);
+            var tb = new Rectangle(box.X + S(8), box.Y + (box.Height - tokenBox.PreferredHeight) / 2, box.Width - S(16), tokenBox.PreferredHeight);
+            if (tokenBox.Bounds != tb) tokenBox.Bounds = tb;
+            bool visible = box.Top >= 0 && box.Bottom <= ClientSize.Height;
+            if (GitHub.HasToken)
+            {
+                string status = GitHub.Error ?? (GitHub.Login != null ? "Đã kết nối @" + GitHub.Login : "Đã lưu, đang kết nối…");
+                row = Card(g, x, w, ref y, null, "Đã lưu token", status);
+                Button(g, row, row.Right - S(12), "✕", true, () =>
+                {
+                    c.GitHubToken = "";
+                    GitHub.Login = null;
+                    GitHub.Unread = -1;
+                    Config.Apply();
+                });
+            }
+            return visible;
+        }
+
+        void SaveToken()
+        {
+            string t = tokenBox.Text.Trim();
+            if (t.Length == 0 || t.IndexOfAny(new[] { ' ', '\t', '\r', '\n' }) >= 0) return; // tokens are a single word
+            Config.Current.GitHubToken = Secret.Protect(t);
+            tokenBox.Text = "";
+            GitHub.Error = null;
+            GitHub.RefreshNow();
+            Config.Apply();
         }
 
         void AddApps()
