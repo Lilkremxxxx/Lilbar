@@ -126,21 +126,22 @@ namespace Lilbar
             using (var b = new SolidBrush(c)) g.FillPath(b, p);
         }
 
-        // Tiles inside the dock's shell: almost nothing but a hairline, so the glass stays clear.
+        // Tiles inside the dock's shell: only a hairline, no fill (opacity 0).
         public static void Tile(Graphics g, Rectangle r)
         {
             var edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
             using (GraphicsPath p = Round(edge, S(9)))
-            {
-                using (var b = new LinearGradientBrush(r, Color.FromArgb(30, 255, 255, 255), Color.FromArgb(8, 255, 255, 255), 90f)) g.FillPath(b, p);
-                using (var b = new LinearGradientBrush(r, Color.FromArgb(78, 255, 255, 255), Color.FromArgb(30, 255, 255, 255), 90f))
-                using (var pen = new Pen(b, 1f)) g.DrawPath(pen, p);
-            }
+            using (var b = new LinearGradientBrush(r, Color.FromArgb(84, 255, 255, 255), Color.FromArgb(34, 255, 255, 255), 90f))
+            using (var pen = new Pen(b, 1f)) g.DrawPath(pen, p);
         }
 
-        // The dock's outer box: one clear pane the height of the taskbar, a hairline rim and a faint dark underlay
-        // that keeps text readable over bright wallpapers. No blur (that would be acrylic).
-        public static void Shell(Graphics g, Rectangle r) { Pane(g, r, S(13), 52); }
+        // The dock's outer box: fully clear (opacity 0), only a hairline rim. No fill, no blur.
+        public static void Shell(Graphics g, Rectangle r)
+        {
+            using (GraphicsPath p = Round(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), S(13)))
+            using (var b = new LinearGradientBrush(r, Color.FromArgb(110, 255, 255, 255), Color.FromArgb(44, 255, 255, 255), 90f))
+            using (var pen = new Pen(b, 1f)) g.DrawPath(pen, p);
+        }
 
         // Popups sit over arbitrary content, so their pane is darker for legibility.
         public static void Panel(Graphics g, Rectangle r) { Pane(g, r, S(16), 236); }
@@ -184,7 +185,7 @@ namespace Lilbar
             {
                 // On clear glass (grayscale AA) a faint drop shadow keeps text legible over any wallpaper; opaque windows use ClearType and need none.
                 if (g.TextRenderingHint != TextRenderingHint.ClearTypeGridFit && c.A > 120)
-                    using (var sh = new SolidBrush(Color.FromArgb(c.A * 50 / 255, 0, 0, 0))) g.DrawString(s, f, sh, new Rectangle(r.X, r.Y + 1, r.Width, r.Height), sf);
+                    using (var sh = new SolidBrush(Color.FromArgb(c.A * 110 / 255, 0, 0, 0))) g.DrawString(s, f, sh, new Rectangle(r.X, r.Y + 1, r.Width, r.Height), sf);
                 using (var b = new SolidBrush(c)) g.DrawString(s, f, b, r, sf);
             }
         }
