@@ -32,7 +32,18 @@ namespace Lilbar
 
         Seg MediaSeg()
         {
-            if (!Media.Has) return null;
+            if (!Media.Has) // enabled but nothing playing: say so instead of vanishing
+                return new Seg
+                {
+                    W = S(176),
+                    Draw = (g, r) =>
+                    {
+                        Glass.Tile(g, r);
+                        AddHit(r, null, null, "Chưa có app nào phát nhạc\nMở Spotify, YouTube, Apple Music… rồi phát một bài", false);
+                        Glass.Center(g, MdlMusic, Glass.Mdl, Glass.Dim, new Rectangle(r.X + S(6), r.Y, S(28), r.Height));
+                        Glass.Text(g, "Chưa phát nhạc", Glass.Row, Glass.Dim, new Rectangle(r.X + S(38), r.Y, r.Width - S(44), r.Height), StringAlignment.Near);
+                    }
+                };
             string title = Media.Title, artist = Media.Artist;
             Bitmap thumb = Media.Thumb;
             bool playing = Media.Playing;

@@ -16,6 +16,7 @@ namespace Lilbar
     {
         public string Id { get; set; }
         public bool On { get; set; }
+        public string Side { get; set; } // widgets mode: "left" = left end of the Windows taskbar, otherwise beside the tray
     }
 
     public class TodoItem

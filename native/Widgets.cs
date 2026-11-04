@@ -89,6 +89,11 @@ namespace Lilbar
         {
             if (mgr == null) mgr = WinRt.Wait(GlobalSystemMediaTransportControlsSessionManager.RequestAsync());
             GlobalSystemMediaTransportControlsSession s = mgr.GetCurrentSession();
+            if (s == null) // Windows only names a "current" session sometimes; any open one will do
+            {
+                IReadOnlyList<GlobalSystemMediaTransportControlsSession> all = mgr.GetSessions();
+                if (all.Count > 0) s = all[0];
+            }
             if (s == null) { Has = false; return; }
             Playing = s.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
             GlobalSystemMediaTransportControlsSessionTimelineProperties tl = s.GetTimelineProperties();

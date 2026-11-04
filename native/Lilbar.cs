@@ -691,12 +691,14 @@ namespace Lilbar
         // so Windows keeps it right above the taskbar (clicking the taskbar can't cover it, a fullscreen game that
         // pushes the taskbar down pushes it down too). Zero in the experimental replace mode.
         readonly IntPtr bar;
-        bool barShown = true;
+        readonly bool leftSide; // widgets mode keeps two strips per taskbar: its left end and beside the tray
+        bool barShown = true, empty;
 
-        public Dock(Screen s)
+        public Dock(Screen s, bool left)
         {
             screen = s;
             primary = s.Primary;
+            leftSide = left;
             if (!Manager.Replace) bar = Taskbar.On(s.Bounds);
             H = Taskbar.HeightOn(s.Bounds);
             if (H < S(24) || H > S(120)) H = S(48);
@@ -738,8 +740,10 @@ namespace Lilbar
             N.RECT tb;
             bool on = N.IsWindowVisible(bar) && N.GetWindowRect(bar, out tb) && tb.Bottom - Math.Max(tb.Top, screen.Bounds.Top) >= (tb.Bottom - tb.Top) * 3 / 4
                 && tb.Top < screen.Bounds.Bottom - S(8) && !FullscreenOnScreen();
-            if (on != barShown) { barShown = on; Visible = on; }
+            if (on != barShown) barShown = on;
             if (on) Redraw();
+            bool show = on && !empty;
+            if (Visible != show) Visible = show;
         }
         public Rectangle Strip { get { Rectangle b = screen.Bounds; return new Rectangle(b.X, b.Bottom - H, b.Width, H); } }
 
@@ -815,6 +819,7 @@ namespace Lilbar
             {
                 if (!it.On) continue;
                 if (bar != IntPtr.Zero && (it.Id == "apps" || it.Id == "tray")) continue; // the Windows taskbar shows these itself
+                if (bar != IntPtr.Zero && (it.Side == "left") != leftSide) continue;    // the other strip's tile
                 Seg sg = Build(it.Id, th, slot);
                 if (sg != null) { sg.Id = it.Id; segs.Add(sg); }
             }
@@ -827,7 +832,13 @@ namespace Lilbar
                 used += segs[i].W + S(6);
                 if (used > room) { segs.RemoveRange(i, segs.Count - i); break; }
             }
-            if (Editing)
+            if (Editing && leftSide && segs.Count == 0)
+                segs.Add(new Seg { W = S(150), Draw = (g, r) =>
+                {
+                    EmptySlot(g, r, S(9));
+                    Glass.Center(g, "Bên trái: dùng ⇄", Glass.Row, Glass.Dim, r);
+                } });
+            if (Editing && !leftSide)
             {
                 segs.Add(new Seg { W = slot + S(8), Draw = (g, r) =>
                 {
@@ -842,6 +853,8 @@ namespace Lilbar
                     editHits.Add(new Hit { R = r, Up = b => Manager.SetEditing(false), Tip = "Thoát chế độ chỉnh sửa" });
                 } });
             }
+            empty = leftSide && segs.Count == 0 && bar != IntPtr.Zero;
+            if (empty && leftSide) { if (Visible) Visible = false; animClock.Stop(); return; } // nothing on the left: no strip there
             if (segs.Count == 0) // keep something to right-click
                 segs.Add(new Seg { W = slot + S(8), Draw = (g, r) => { Glass.Tile(g, r); Glass.Center(g, "☰", Glass.Glyph, Color.White, r); AddHit(r, null, b => ShowMenu(), "Lilbar", false); } });
 
@@ -866,7 +879,7 @@ namespace Lilbar
                 N.GetWindowRect(bar, out tb);
                 IntPtr notify = N.FindWindowEx(bar, IntPtr.Zero, "TrayNotifyWnd", null);
                 int trayLeft = notify != IntPtr.Zero && N.GetWindowRect(notify, out tray) ? tray.Left : tb.Right - S(140);
-                int bx = Config.Current.Align == "left" ? tb.Left + S(8) : trayLeft - W - S(6), by = tb.Top + (tb.Bottom - tb.Top - H) / 2;
+                int bx = leftSide ? tb.Left + S(8) : trayLeft - W - S(6), by = tb.Top + (tb.Bottom - tb.Top - H) / 2;
                 if (Left != bx || Top != by || Width != W || Height != H) SetBounds(bx, by, W, H);
             }
             else
@@ -897,7 +910,7 @@ namespace Lilbar
                     }
                     x += widths[i] + gap;
                 }
-                if (Editing) DrawEdit(g);
+                if (Editing && !empty) DrawEdit(g);
                 if (dragging) DrawDrag(g);
             }
             if (Editing) { hits.Clear(); hits.AddRange(editHits); } // only the edit controls answer clicks
@@ -918,6 +931,18 @@ namespace Lilbar
                 string id = s.Id;
                 Rectangle badge = Badge(g, s.R, "", Color.FromArgb(235, 70, 70, 78));
                 editHits.Add(new Hit { R = badge, Up = b => { ItemCfg it = Config.Current.Items.Find(x => x.Id == id); if (it != null) { it.On = false; Config.Apply(); } }, Tip = "Gỡ khỏi thanh" });
+                if (bar != IntPtr.Zero && id != null)
+                {
+                    // Send the tile to the other end of the taskbar.
+                    var flip = new Rectangle(s.R.X + S(1), s.R.Y + S(1), S(14), S(14));
+                    using (var bb = new SolidBrush(Glass.Blue)) g.FillEllipse(bb, flip);
+                    Glass.Center(g, leftSide ? "→" : "←", Glass.Badge, Color.White, new Rectangle(flip.X, flip.Y, flip.Width, flip.Height));
+                    editHits.Add(new Hit
+                    {
+                        R = Rectangle.Inflate(flip, S(3), S(3)), Tip = leftSide ? "Chuyển sang cạnh khay" : "Chuyển sang mép trái taskbar",
+                        Up = b => { ItemCfg it = Config.Current.Items.Find(x => x.Id == id); if (it != null) { it.Side = leftSide ? null : "left"; Config.Apply(); } },
+                    });
+                }
             }
         }
 
@@ -1618,10 +1643,11 @@ namespace Lilbar
             foreach (Screen s in Screen.AllScreens)
             {
                 if (!Replace && Taskbar.On(s.Bounds) == IntPtr.Zero) continue; // no Windows taskbar on this monitor (yet)
-                var d = new Dock(s);
+                var d = new Dock(s, false);
                 docks.Add(d);
                 d.Show();
                 if (d.IsPrimary && Replace) TrayHost.SetRect(d.Strip);
+                if (!Replace) { var l = new Dock(s, true); docks.Add(l); l.Show(); } // the strip at the taskbar's left end
             }
             lastSig = null;
             Refresh();

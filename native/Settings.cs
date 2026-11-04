@@ -282,7 +282,9 @@ namespace Lilbar
                 ItemCfg it = items[on[k]];
                 CatalogItem c = Catalog.Get(it.Id);
                 row = DragCard(g, x, w, ref y, "bar", k, null, c.Name, c.Group + (c.Sub != null ? " · " + c.Sub : ""), moveOn);
-                Toggle(g, row, row.Right - S(12), true, () => { it.On = false; Config.Apply(); });
+                int rr = Toggle(g, row, row.Right - S(12), true, () => { it.On = false; Config.Apply(); });
+                if (!Manager.Replace && it.Id != "apps" && it.Id != "tray")
+                    Segment(g, row, rr, it.Side == "left" ? "Trái" : "Phải", false, () => { it.Side = it.Side == "left" ? null : "left"; Config.Apply(); });
             }
 
             Header(g, "THƯ VIỆN WIDGET", x, w, ref y);
