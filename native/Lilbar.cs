@@ -1150,7 +1150,7 @@ namespace Lilbar
             if (!Claude.Available) return null;
             return new Seg
             {
-                W = S(198),
+                W = S(206),
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);
@@ -1176,8 +1176,8 @@ namespace Lilbar
         static void UsageRow(Graphics g, Rectangle tile, int y, string label, Claude.Limit l)
         {
             int rowH = S(15), x = tile.X + S(8);
-            Glass.Text(g, label, Glass.Row, Glass.Dim, new Rectangle(x, y, S(20), rowH), StringAlignment.Near);
-            var bar = new Rectangle(x + S(20), y + rowH / 2 - S(2), S(60), S(4));
+            Glass.Text(g, label, Glass.Row, Glass.Dim, new Rectangle(x, y, S(26), rowH), StringAlignment.Near);
+            var bar = new Rectangle(x + S(26), y + rowH / 2 - S(2), S(60), S(4));
             Glass.Fill(g, bar, S(2), Color.FromArgb(50, 255, 255, 255));
             if (l == null) return;
             double p = Math.Max(0, Math.Min(100, l.Pct));

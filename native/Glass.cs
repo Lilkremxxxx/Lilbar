@@ -13,7 +13,7 @@ namespace Lilbar
     {
         public static float Scale = 1;
         public static readonly Color Blue = Color.FromArgb(255, 74, 155, 255);
-        public static readonly Color Dim = Color.FromArgb(225, 255, 255, 255);
+        public static readonly Color Dim = Color.FromArgb(235, 255, 255, 255);
         public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge, Menu, MenuIcon, Fluent, Badge, Caption;
         static readonly Bitmap measureBmp = new Bitmap(1, 1);
 
@@ -26,15 +26,15 @@ namespace Lilbar
             string text = Has("Segoe UI Variable Text") ? "Segoe UI Variable Text" : "Segoe UI";
             string semi = Has("Segoe UI Variable Text Semibold") ? "Segoe UI Variable Text Semibold" : "Segoe UI Semibold";
             string disp = Has("Segoe UI Variable Display") ? "Segoe UI Variable Display" : "Segoe UI";
-            Time = F(disp, 17, FontStyle.Bold);
-            Date = F(semi, 12.5f, FontStyle.Regular);
-            Value = F(semi, 13.5f, FontStyle.Regular);
-            Label = F(semi, 9.5f, FontStyle.Regular);
-            Batt = F(disp, 16, FontStyle.Bold);
+            Time = F(disp, 18, FontStyle.Bold);
+            Date = F(semi, 13.5f, FontStyle.Regular);
+            Value = F(semi, 14.5f, FontStyle.Regular);
+            Label = F(semi, 10.5f, FontStyle.Regular);
+            Batt = F(disp, 17, FontStyle.Bold);
             Bolt = F("Segoe UI Symbol", 11, FontStyle.Regular);
-            Row = F(semi, 13, FontStyle.Regular);
-            Day = F(semi, 12, FontStyle.Regular);
-            DateBig = F(disp, 16, FontStyle.Bold);
+            Row = F(semi, 14, FontStyle.Regular);
+            Day = F(semi, 13, FontStyle.Regular);
+            DateBig = F(disp, 17, FontStyle.Bold);
             Glyph = F("Segoe UI Symbol", 13, FontStyle.Regular);
             Sym = F("Segoe UI Symbol", 11, FontStyle.Regular);
             Big = F(disp, 18, FontStyle.Regular);
@@ -200,7 +200,7 @@ namespace Lilbar
 
         public static void Text(Graphics g, string s, Font f, Color c, Rectangle r, StringAlignment h)
         {
-            using (var sf = new StringFormat { Alignment = h, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap })
+            using (var sf = new StringFormat { Alignment = h, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.NoClip })
             {
                 // On clear glass (grayscale AA) a faint drop shadow keeps text legible over any wallpaper; opaque windows use ClearType and need none.
                 if (g.TextRenderingHint != TextRenderingHint.ClearTypeGridFit && c.A > 120)
