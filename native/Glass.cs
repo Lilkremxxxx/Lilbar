@@ -128,23 +128,11 @@ namespace Lilbar
             using (var b = new SolidBrush(c)) g.FillPath(b, p);
         }
 
-        // Tiles inside the dock's shell: only a hairline, no fill (opacity 0).
-        public static void Tile(Graphics g, Rectangle r)
-        {
-            if (r.Width < 4 || r.Height < 4) return;
-            var edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
-            using (GraphicsPath p = Round(edge, S(9)))
-            using (var b = new LinearGradientBrush(r, Color.FromArgb(84, 255, 255, 255), Color.FromArgb(34, 255, 255, 255), 90f))
-            using (var pen = new Pen(b, 1f)) g.DrawPath(pen, p);
-        }
+        // Tiles and the dock's outer box draw nothing: the user wants only the information, no frames.
+        // Callers keep calling them, so a frame style can come back here in one place.
+        public static void Tile(Graphics g, Rectangle r) { }
 
-        // The dock's outer box: fully clear (opacity 0), only a hairline rim. No fill, no blur.
-        public static void Shell(Graphics g, Rectangle r)
-        {
-            using (GraphicsPath p = Round(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), S(13)))
-            using (var b = new LinearGradientBrush(r, Color.FromArgb(110, 255, 255, 255), Color.FromArgb(44, 255, 255, 255), 90f))
-            using (var pen = new Pen(b, 1f)) g.DrawPath(pen, p);
-        }
+        public static void Shell(Graphics g, Rectangle r) { }
 
         // Popups sit over arbitrary content, so their pane is darker for legibility.
         public static void Panel(Graphics g, Rectangle r) { Pane(g, r, S(16), 236); }
