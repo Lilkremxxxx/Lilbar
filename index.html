@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Lilbar</title>
+<style>
+  :root { color-scheme: dark; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+  body { display: flex; align-items: center; justify-content: center;
+    font: 13px/1.2 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; color: #fff; }
+  .dock { display: flex; gap: 6px; align-items: center; height: 56px; padding: 0 6px; box-sizing: border-box;
+    background: rgba(18, 18, 20, .9); border: 1px solid rgba(255, 255, 255, .14); border-radius: 18px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .45); }
+  .tile { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px; box-sizing: border-box;
+    background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .08); border-radius: 12px; }
+  .apps { gap: 4px; padding: 0 6px; }
+  .app { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; border: 0; background: none; padding: 0; cursor: pointer; }
+  .app:hover, .app.active { background: rgba(255, 255, 255, .14); }
+  .app.running::after { content: ''; position: absolute; bottom: 1px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #4a9bff; }
+  .app img { width: 26px; height: 26px; }
+  .ring { position: relative; width: 36px; height: 36px; }
+  .ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .ring .track { stroke: rgba(255, 255, 255, .15); }
+  .ring .bar { stroke: #4a9bff; stroke-linecap: round; transition: stroke-dasharray .4s; }
+  .ring span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 600; }
+  .ring small { font-size: 8px; font-weight: 400; opacity: .7; }
+  .battery { background: #2f8bff; border-color: transparent; font-weight: 700; min-width: 52px; justify-content: center; }
+  .battery.low { background: #e3432b; }
+  .clock { flex-direction: column; align-items: flex-end; gap: 1px; min-width: 78px; }
+  .clock .time { font-size: 15px; font-weight: 700; }
+  .clock .date { font-size: 10px; opacity: .75; text-transform: uppercase; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<div class="dock">
+  <div class="tile apps" id="apps"></div>
+  <div class="tile" id="sys">
+    <div class="ring" id="cpu"></div>
+    <div class="ring" id="ram"></div>
+  </div>
+  <div class="tile battery" id="battery" hidden></div>
+  <div class="tile clock"><div class="time" id="time"></div><div class="date" id="date"></div></div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function ring(el, label, pct) {
+    const r = 14, c = 2 * Math.PI * r;
+    el.innerHTML = `<svg viewBox="0 0 36 36" fill="none" stroke-width="3">
+      <circle class="track" cx="18" cy="18" r="${r}"/>
+      <circle class="bar" cx="18" cy="18" r="${r}" stroke-dasharray="${(c * pct) / 100} ${c}"/></svg>
+      <span>${pct}<small>${label}</small></span>`;
+  }
+
+  async function stats() {
+    const { cpu, ram } = await lilbar.stats();
+    ring($('cpu'), 'CPU', cpu);
+    ring($('ram'), 'RAM', ram);
+  }
+
+  function clock() {
+    const d = new Date();
+    $('time').textContent = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    $('date').textContent = d.toLocaleDateString('vi-VN', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  let appsSig = '';
+  // Pinned apps first (dot when running), then every other open window, like the Windows taskbar.
+  async function apps() {
+    const [pinned, wins] = await Promise.all([lilbar.apps(), lilbar.windows()]);
+    const key = (e) => (e || '').toLowerCase(), used = new Set();
+    const items = pinned.map((a) => {
+      const ws = wins.filter((w) => key(w.exe) === key(a.exe));
+      ws.forEach((w) => used.add(w.hwnd));
+      return { icon: a.icon, title: a.name, running: ws.length > 0, active: ws.some((w) => w.active),
+        click: () => (ws.length ? lilbar.activate(ws[0].hwnd) : lilbar.launch(a.path)) };
+    });
+    wins.filter((w) => !used.has(w.hwnd)).forEach((w) =>
+      items.push({ icon: w.icon, title: w.title, running: true, active: w.active, click: () => lilbar.activate(w.hwnd) }));
+    const sig = JSON.stringify(items.map((i) => [i.title, i.running, i.active, i.icon.length]));
+    if (sig === appsSig) return; // keep hover state and in-flight clicks when nothing changed
+    appsSig = sig;
+    $('apps').replaceChildren(...items.map((i) => {
+      const b = document.createElement('button');
+      b.className = 'app' + (i.running ? ' running' : '') + (i.active ? ' active' : '');
+      b.title = i.title;
+      b.innerHTML = i.icon ? `<img src="${i.icon}" alt="">` : i.title[0];
+      b.onclick = i.click;
+      return b;
+    }));
+    $('apps').hidden = items.length === 0;
+  }
+
+  async function battery() {
+    if (!navigator.getBattery) return;
+    const b = await navigator.getBattery();
+    const draw = () => {
+      const pct = Math.round(b.level * 100);
+      $('battery').hidden = b.charging && pct === 100; // desktop PC: nothing to show
+      $('battery').classList.toggle('low', pct <= 20 && !b.charging);
+      $('battery').textContent = (b.charging ? '⚡ ' : '') + pct;
+    };
+    b.onlevelchange = b.onchargingchange = draw;
+    draw();
+  }
+
+  new ResizeObserver(([e]) => lilbar.resize(e.target.offsetWidth + 2)).observe(document.querySelector('.dock'));
+  clock(); stats(); apps(); battery();
+  setInterval(clock, 1000);
+  setInterval(stats, 2000);
+  setInterval(apps, 1000);
+</script>
+</body>
+</html>

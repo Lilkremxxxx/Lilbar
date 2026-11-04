@@ -1,0 +1,24 @@
+{
+  "name": "lilbar",
+  "version": "1.0.0",
+  "description": "Dock + widget taskbar for Windows",
+  "main": "main.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron .",
+    "restore-taskbar": "node -e \"require('./win32').restoreTaskbar()\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "45.2.1"
+  },
+  "dependencies": {
+    "koffi": "3.3.6"
+  }
+}
