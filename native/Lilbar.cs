@@ -595,29 +595,7 @@ namespace Lilbar
             foreach (ItemCfg it in Config.Current.Items)
             {
                 if (!it.On) continue;
-                Seg sg = null;
-                switch (it.Id)
-                {
-                    case "apps": sg = AppsSeg(slot); break;
-                    case "folder": sg = FolderSeg(slot); break;
-                    case "system": sg = SystemSeg(slot); break;
-                    case "claude": sg = ClaudeSeg(th); break;
-                    case "tray": sg = TraySeg(); break;
-                    case "battery": sg = BatterySeg(); break;
-                    case "today": sg = TodaySeg(); break;
-                    case "clock": sg = ClockSeg(); break;
-                    case "media": sg = MediaSeg(); break;
-                    case "network": sg = NetworkSeg(); break;
-                    case "volume": sg = VolumeSeg(); break;
-                    case "toggles": sg = TogglesSeg(); break;
-                    case "temp": sg = TempSeg(); break;
-                    case "worldclock": sg = WorldClockSeg(); break;
-                    case "flipclock": sg = FlipClockSeg(); break;
-                    case "timer": sg = TimerSeg(); break;
-                    case "pomodoro": sg = PomodoroSeg(); break;
-                    case "todos": sg = TodosSeg(); break;
-                    case "github": sg = GitHubSeg(); break;
-                }
+                Seg sg = Build(it.Id, th, slot);
                 if (sg != null) segs.Add(sg);
             }
             // shortcut: tiles that don't fit the screen width are dropped from the right; a second row would be the upgrade
@@ -1138,6 +1116,7 @@ namespace Lilbar
         {
             if (shutDown) return;
             shutDown = true;
+            ScreenTime.Flush();
             TrayHost.Stop();
             Taskbar.Restore();
             TrayHost.BroadcastTaskbarCreated();
@@ -1193,7 +1172,7 @@ namespace Lilbar
             Weather.Parse(new JavaScriptSerializer().Deserialize<Dictionary<string, object>>("{\"current\":{\"temperature_2m\":31.4,\"weather_code\":2},\"daily\":{\"temperature_2m_max\":[33.1],\"temperature_2m_min\":[25.0]}}"));
             check(Weather.Temp == 31.4 && Weather.Code == 2 && Weather.Hi == 33.1 && Weather.Lo == 25.0 && Weather.Glyph(2) == "⛅", "weather parse");
             Config cfg = Config.Normalize(new JavaScriptSerializer().Deserialize<Config>("{\"Items\":[{\"Id\":\"clock\",\"On\":true},{\"Id\":\"bogus\",\"On\":true},{\"Id\":\"clock\",\"On\":false}]}"));
-            check(cfg.Items.Count == Config.Defaults.Length && cfg.Items[0].Id == "clock" && cfg.Items[0].On && cfg.Align == "center", "config normalize keeps order, drops unknown and duplicates, adds missing");
+            check(cfg.Items.Count == Catalog.All.Length && cfg.Items[0].Id == "clock" && cfg.Items[0].On && cfg.Align == "center", "config normalize keeps order, drops unknown and duplicates, adds missing");
             string sys = TrayHost.ExpandKnownFolder("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\x.exe");
             check(sys.EndsWith("\\System32\\x.exe", StringComparison.OrdinalIgnoreCase), "known folder path " + sys);
             GitHub.ParseCalendar("{\"data\":{\"viewer\":{\"login\":\"me\",\"contributionsCollection\":{\"contributionCalendar\":{\"totalContributions\":7,\"weeks\":[{\"contributionDays\":[{\"contributionCount\":0},{\"contributionCount\":2},{\"contributionCount\":3}]},{\"contributionDays\":[{\"contributionCount\":2},{\"contributionCount\":0}]}]}}}}}");
@@ -1205,6 +1184,21 @@ namespace Lilbar
             Pomodoro.Reset();
             check(Net.Fmt(1500000) == "1.5 MB/s" && Net.Fmt(2400) == "2 KB/s" && Net.Fmt(12) == "12 B/s", "network speed format");
             check(Array.TrueForAll(Cities.All, z => z[0] == "" || TimeZoneInfo.FindSystemTimeZoneById(z[0]) != null), "world clock time zones exist");
+            string ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:" + DateTime.UtcNow.AddHours(2).ToString("yyyyMMdd'T'HHmmss'Z'") + "\r\nSUMMARY:Họp\\, nhóm\r\n dự án\r\nEND:VEVENT\r\n" +
+                "BEGIN:VEVENT\r\nDTSTART;VALUE=DATE:" + DateTime.Today.AddDays(-14).ToString("yyyyMMdd") + "\r\nRRULE:FREQ=WEEKLY;COUNT=10\r\nSUMMARY:Hằng tuần\r\nEND:VEVENT\r\n" +
+                "BEGIN:VEVENT\r\nDTSTART:20000101T090000\r\nSUMMARY:Cũ\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+            List<Calendar.Ev> evs = Calendar.Parse(ics, DateTime.Now, 7);
+            // weekly event from 14 days ago lands today and in 7 days; the year-2000 one is dropped
+            check(evs.Count == 3 && evs.Exists(e => e.Title == "Họp, nhómdự án" && !e.AllDay) && evs.FindAll(e => e.Title == "Hằng tuần" && e.AllDay).Count == 2 && evs.Exists(e => e.Start.Date == DateTime.Today), "ics parse: unfold, escapes, weekly repeat, past dropped (" + evs.Count + ")");
+            Currency.Parse("USD", "{\"result\":\"success\",\"rates\":{\"USD\":1,\"VND\":25400.5}}");
+            check(Currency.Rates["VND"] == 25400.5 && Currency.Base == "USD", "currency rates parse");
+            Weather.Parse(new JavaScriptSerializer().Deserialize<Dictionary<string, object>>("{\"current\":{\"temperature_2m\":30,\"weather_code\":3,\"wind_speed_10m\":12.5,\"relative_humidity_2m\":70}," +
+                "\"hourly\":{\"time\":[\"2026-11-05T14:00\",\"2026-11-05T15:00\"],\"temperature_2m\":[30,29],\"weather_code\":[3,61]}," +
+                "\"daily\":{\"time\":[\"2026-11-05\",\"2026-11-06\"],\"temperature_2m_max\":[33,31],\"temperature_2m_min\":[24,23],\"weather_code\":[3,61],\"precipitation_probability_max\":[10,80],\"sunrise\":[\"2026-11-05T05:58\"],\"sunset\":[\"2026-11-05T17:16\"]}}"));
+            check(Weather.Hours.Count == 2 && Weather.Hours[1].Code == 61 && Weather.Days.Count == 2 && Weather.Days[1].Rain == 80 && Weather.Sunset.Hour == 17 && Weather.Wind == 12.5, "weather hourly, daily, sun parse");
+            check(ScreenTime.Kind(@"C:\x\chrome.exe") == 0 && ScreenTime.Kind("Code.exe") == 1 && ScreenTime.Kind("Discord.exe") == 2 && ScreenTime.Kind("notepad.exe") == 5, "app kinds");
+            check(Files.Size(3L << 30) == "3 GB" && Files.Size(5L << 20) == "5 MB", "size format");
+            check(Array.TrueForAll(Catalog.All, ci => Array.IndexOf(Catalog.Groups, ci.Group) >= 0) && new HashSet<string>(Array.ConvertAll(Catalog.All, ci => ci.Id)).Count == Catalog.All.Length, "catalog ids unique, groups known");
             Audio.Tick();
             check(Audio.Level >= 0 && Audio.Level <= 100, "volume " + Audio.Level + "% on " + Audio.Device);
             Thermal.Poll();

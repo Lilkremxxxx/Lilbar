@@ -14,7 +14,7 @@ namespace Lilbar
         public static float Scale = 1;
         public static readonly Color Blue = Color.FromArgb(255, 74, 155, 255);
         public static readonly Color Dim = Color.FromArgb(200, 255, 255, 255);
-        public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike;
+        public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge;
         static readonly Bitmap measureBmp = new Bitmap(1, 1);
 
         public static int S(float v) { return (int)Math.Round(v * Scale); }
@@ -42,6 +42,8 @@ namespace Lilbar
             MdlSmall = F("Segoe MDL2 Assets", 11, FontStyle.Regular);
             Flip = F("Segoe UI", 19, FontStyle.Bold);
             Strike = F("Segoe UI", 12.5f, FontStyle.Strikeout);
+            GlyphBig = F("Segoe UI Symbol", 19, FontStyle.Regular);
+            Huge = F("Segoe UI", 22, FontStyle.Bold);
         }
 
         static Font F(string family, float px, FontStyle style) { return new Font(family, px * Scale, style, GraphicsUnit.Pixel); }

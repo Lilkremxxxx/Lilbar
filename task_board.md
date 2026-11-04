@@ -15,7 +15,9 @@ _Last updated: 2026-11-04 by claude-code_
 | T-013 | Bỏ bản Electron (main.js, win32.js, preload.js, index.html, node_modules, package*.json) | blocked: chờ user xác nhận xoá | P2 | human | 02_dock_mvp | claude-code | user đồng ý, đã xoá | 2026-11-04 |
 | T-010 | Ẩn dock khi game/video fullscreen; tự chạy khi khởi động | todo | P2 | claude-code | backlog | claude-code | dock biến mất khi app fullscreen | 2026-11-04 |
 | T-024 | Widget độ sáng màn hình | blocked: màn hình không hỗ trợ DDC/CI, WMI không có (máy bàn) | P2 | human | backlog | claude-code | bật DDC/CI trong menu màn hình rồi làm | 2026-11-04 |
-| T-025 | Thêm nhóm widget kiểu lumabar tiếp theo (user chọn) | todo | P2 | human | backlog | user | user chọn nhóm | 2026-11-04 |
+| T-025 | Làm lại toàn bộ chức năng widget lumabar, thiết kế riêng: đợt 2 (internet công khai) | doing | P1 | claude-code | 02_dock_mvp | user | chứng khoán, crypto, LeetCode, hình nền, GitHub tổng quan | 2026-11-04 |
+| T-026 | Đợt 3: widget cần key (doanh thu, phân tích, lập trình, mạng xã hội, Gmail, DeepSeek, GLM) | todo | P2 | claude-code | 02_dock_mvp | user | có parser + self-check, ghi rõ chưa kiểm chứng | 2026-11-04 |
+| T-027 | Widget AI đọc đăng nhập app khác (ChatGPT/Codex, Gemini CLI, Grok, Cursor, OpenCode) | blocked: hệ thống chặn việc đọc file đăng nhập của app khác | P2 | human | backlog | user | user cấp quyền hoặc bỏ | 2026-11-04 |
 | T-023 | Kiểm chứng màn hình thứ hai | blocked: máy chỉ có 1 màn hình | P1 | human | 02_dock_mvp | user | cắm màn hình 2, dock hiện và thanh cũ ẩn | 2026-11-04 |
 | T-011 | Nhiều cửa sổ cùng app: click pinned đang chạy nên cho chọn cửa sổ (hiện tại lấy cửa sổ đầu) | todo | P2 | claude-code | backlog | claude-code | - | 2026-11-04 |
 
@@ -39,6 +41,7 @@ _Last updated: 2026-11-04 by claude-code_
 | T-020 | Ô Hôm nay & thời tiết | 2026-11-04 | `TodaySeg`, `Weather`; 34° lúc test |
 | T-021 | Ô thư mục app + popup | 2026-11-04 | `FolderSeg`, `Popup.cs` |
 | T-022 | Menu chuột phải + cửa sổ cài đặt (widget, thứ tự, app ghim, khay, thư mục, căn lề) | 2026-11-04 | `Settings.cs`, `Config` |
+| T-028 | Đợt 1 widget kiểu lumabar (thiết kế riêng): 10 đồng hồ, 7 thời tiết, 9 hệ thống, 7 tệp, 8 năng suất, 3 media; danh mục + thư viện widget + tab Tài khoản | 2026-11-04 | `Catalog.cs`, `Widgets2.cs`, `Tiles2.cs`, `Popups2.cs`; self-check 31/31; chụp 4 bố cục |
 | T-018 | Bộ widget đề xuất: đồng hồ thế giới, đồng hồ lật, mạng, nhiệt độ, Wi-Fi/Bluetooth, đang phát, âm lượng, hẹn giờ, pomodoro, việc cần làm, GitHub + tab Tiện ích | 2026-11-04 | `Widgets.cs`, `DockWidgets.cs`; self-check 24/24; chụp 2 bố cục thử |
 
 ## Rules for agents

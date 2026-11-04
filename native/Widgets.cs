@@ -71,7 +71,17 @@ namespace Lilbar
         public static volatile bool Has, Playing;
         public static volatile string Title = "", Artist = "", App = "";
         public static volatile Bitmap Thumb;
+        public static double Pos, Dur; // seconds, as last reported by the app
+        public static DateTime PosAt;
         static GlobalSystemMediaTransportControlsSessionManager mgr;
+
+        // Playback position 0..1, advanced locally between the app's (infrequent) timeline updates.
+        public static double Progress()
+        {
+            if (Dur <= 0) return 0;
+            double p = Pos + (Playing ? (DateTime.Now - PosAt).TotalSeconds : 0);
+            return Math.Max(0, Math.Min(1, p / Dur));
+        }
         static string lastKey;
 
         public static void Poll()
@@ -80,6 +90,10 @@ namespace Lilbar
             GlobalSystemMediaTransportControlsSession s = mgr.GetCurrentSession();
             if (s == null) { Has = false; return; }
             Playing = s.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            GlobalSystemMediaTransportControlsSessionTimelineProperties tl = s.GetTimelineProperties();
+            Dur = (tl.EndTime - tl.StartTime).TotalSeconds;
+            Pos = tl.Position.TotalSeconds;
+            PosAt = tl.LastUpdatedTime.LocalDateTime;
             GlobalSystemMediaTransportControlsSessionMediaProperties p = WinRt.Wait(s.TryGetMediaPropertiesAsync());
             string key = s.SourceAppUserModelId + "|" + p.Title + "|" + p.Artist;
             if (key != lastKey)

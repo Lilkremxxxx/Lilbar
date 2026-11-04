@@ -15,29 +15,7 @@ namespace Lilbar
         class Hot { public Rectangle R; public Action Click; public bool Nav; }
 
         static SettingsForm current;
-        static readonly string[] Tabs = { "Thanh", "Ứng dụng", "Khay hệ thống", "Thư mục", "Tiện ích" };
-        static readonly Dictionary<string, string[]> Names = new Dictionary<string, string[]>
-        {
-            { "apps", new[] { "Ứng dụng", "App ghim và cửa sổ đang mở" } },
-            { "folder", new[] { "Thư mục", "Nhóm app bấm vào để mở" } },
-            { "system", new[] { "CPU / RAM", null } },
-            { "claude", new[] { "Claude Code", "Đọc đăng nhập Claude Code, chỉ gửi tới api.anthropic.com" } },
-            { "tray", new[] { "Khay hệ thống", "Mũi tên và app ghim cạnh nó" } },
-            { "battery", new[] { "Pin", "Tự ẩn trên máy bàn" } },
-            { "today", new[] { "Hôm nay & thời tiết", "Vị trí theo IP (ipinfo.io), thời tiết từ open-meteo.com" } },
-            { "clock", new[] { "Đồng hồ", null } },
-            { "media", new[] { "Đang phát", "Nhạc và video từ bất kỳ app nào báo cho Windows; tự ẩn khi không phát" } },
-            { "network", new[] { "Mạng", "Tốc độ tải xuống và tải lên" } },
-            { "volume", new[] { "Âm lượng", "Lăn chuột để chỉnh, bấm biểu tượng để tắt tiếng" } },
-            { "toggles", new[] { "Wi-Fi / Bluetooth", "Bật tắt nhanh" } },
-            { "temp", new[] { "Nhiệt độ", "Cảm biến bo mạch, không phải nhiệt độ lõi CPU" } },
-            { "worldclock", new[] { "Đồng hồ thế giới", "Chọn thành phố trong tab Tiện ích" } },
-            { "flipclock", new[] { "Đồng hồ lật", null } },
-            { "timer", new[] { "Hẹn giờ", "Lăn chuột để đổi số phút" } },
-            { "pomodoro", new[] { "Pomodoro", "Tập trung và nghỉ theo vòng" } },
-            { "todos", new[] { "Việc cần làm", null } },
-            { "github", new[] { "GitHub", "Thông báo và lịch đóng góp; cần token trong tab Tiện ích" } },
-        };
+        static readonly string[] Tabs = { "Thanh", "Ứng dụng", "Khay hệ thống", "Thư mục", "Tiện ích", "Tài khoản" };
         static readonly Color Bg = Color.FromArgb(255, 17, 17, 21), NavBg = Color.FromArgb(255, 23, 23, 29),
             CardBg = Color.FromArgb(255, 33, 33, 41), Edge = Color.FromArgb(255, 52, 52, 62), BoxBg = Color.FromArgb(255, 44, 44, 54);
         readonly List<Hot> hots = new List<Hot>();
@@ -149,6 +127,7 @@ namespace Lilbar
                 case 2: PaintTray(g, x, w, ref y); break;
                 case 3: showName = PaintFolder(g, x, w, ref y); break;
                 case 4: showToken = PaintExtras(g, x, w, ref y); break;
+                case 5: PaintAccounts(g, x, w, ref y); break;
             }
             contentH = y + scroll + S(20);
             g.ResetClip();
@@ -231,19 +210,59 @@ namespace Lilbar
             right = Segment(g, row, right, "Trái", Config.Current.Align == "left", () => { Config.Current.Align = "left"; Config.Apply(); });
             Segment(g, row, right, "Giữa", Config.Current.Align != "left", () => { Config.Current.Align = "center"; Config.Apply(); });
 
-            Header(g, "WIDGET TRÊN THANH, TỪ TRÁI SANG PHẢI", x, w, ref y);
+            Header(g, "ĐANG DÙNG, TỪ TRÁI SANG PHẢI", x, w, ref y);
+            Note(g, "Quá nhiều ô thì các ô cuối sẽ không vừa màn hình và bị ẩn.", x, w, ref y);
             List<ItemCfg> items = Config.Current.Items;
-            for (int i = 0; i < items.Count; i++)
+            List<int> on = new List<int>();
+            for (int i = 0; i < items.Count; i++) if (items[i].On) on.Add(i);
+            for (int k = 0; k < on.Count; k++)
             {
-                ItemCfg it = items[i];
-                int idx = i;
-                string[] name;
-                if (!Names.TryGetValue(it.Id, out name)) name = new[] { it.Id, null };
-                row = Card(g, x, w, ref y, null, name[0], name[1]);
+                ItemCfg it = items[on[k]];
+                CatalogItem c = Catalog.Get(it.Id);
+                int a = on[k], prev = k > 0 ? on[k - 1] : -1, next = k < on.Count - 1 ? on[k + 1] : -1;
+                row = Card(g, x, w, ref y, null, c.Name, c.Group + (c.Sub != null ? " · " + c.Sub : ""));
                 right = row.Right - S(12);
-                right = Toggle(g, row, right, it.On, () => { it.On = !it.On; Config.Apply(); });
-                right = Button(g, row, right, "▼", idx < items.Count - 1, () => Swap(items, idx, idx + 1));
-                Button(g, row, right, "▲", idx > 0, () => Swap(items, idx, idx - 1));
+                right = Toggle(g, row, right, true, () => { it.On = false; Config.Apply(); });
+                right = Button(g, row, right, "▼", next >= 0, () => Swap(items, a, next));
+                Button(g, row, right, "▲", prev >= 0, () => Swap(items, a, prev));
+            }
+
+            Header(g, "THƯ VIỆN WIDGET", x, w, ref y);
+            Note(g, "Bật một widget để thêm vào cuối thanh, rồi kéo lên bằng nút ▲ ở trên.", x, w, ref y);
+            foreach (string group in Catalog.Groups)
+            {
+                List<ItemCfg> lib = items.FindAll(i => !i.On && Catalog.Get(i.Id).Group == group);
+                if (lib.Count == 0) continue;
+                Header(g, group.ToUpper(), x, w, ref y);
+                foreach (ItemCfg it in lib)
+                {
+                    ItemCfg item = it;
+                    CatalogItem c = Catalog.Get(it.Id);
+                    row = Card(g, x, w, ref y, null, c.Name, c.Sub);
+                    Toggle(g, row, row.Right - S(12), false, () => { items.Remove(item); item.On = true; items.Add(item); Config.Apply(); });
+                }
+            }
+        }
+
+        void PaintAccounts(Graphics g, int x, int w, ref int y)
+        {
+            Header(g, "TÀI KHOẢN VÀ THÔNG SỐ", x, w, ref y);
+            Note(g, "Key được mã hoá theo tài khoản Windows của bạn và chỉ gửi tới đúng dịch vụ của nó.", x, w, ref y);
+            string service = null;
+            foreach (AccountField f in Acct.Fields)
+            {
+                if (f.Service != service) { service = f.Service; Header(g, service.ToUpper(), x, w, ref y); }
+                AccountField field = f;
+                string v = Acct.Get(f.Key);
+                Rectangle row = Card(g, x, w, ref y, null, f.Label, v.Length == 0 ? "Chưa đặt" : f.Secret ? "Đã lưu" : v);
+                int right = Segment(g, row, row.Right - S(12), "Sửa", false, () =>
+                {
+                    string nv = InputDialog.Ask(this, field.Service + ": " + field.Label, field.Hint, field.Secret ? "" : Acct.Get(field.Key), field.Secret);
+                    if (nv == null) return;
+                    Acct.Set(field.Key, nv);
+                    if (field.Key == "ics") Calendar.RefreshNow();
+                });
+                if (v.Length > 0 && field.Secret) Button(g, row, right, "✕", true, () => Acct.Set(field.Key, ""));
             }
         }
 

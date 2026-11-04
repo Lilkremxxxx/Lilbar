@@ -41,17 +41,10 @@ namespace Lilbar
         public int LongBreakMin { get; set; }
         public List<TodoItem> Todos { get; set; }
         public string GitHubToken { get; set; }        // DPAPI-protected, base64
+        public Dictionary<string, string> Keys { get; set; }    // API keys and other secrets, DPAPI-protected
+        public Dictionary<string, string> Values { get; set; }  // plain settings: symbols, usernames, currency codes
+        public List<string> Notes { get; set; }
 
-        // Declared before Current: static fields initialize in order and Normalize reads this.
-        // Everything fits a 1920 px screen with the defaults; the rest are one switch away in Settings.
-        public static readonly string[][] Defaults =
-        {
-            new[] { "apps", "1" }, new[] { "folder", "1" }, new[] { "media", "1" }, new[] { "system", "1" },
-            new[] { "network", "1" }, new[] { "temp", "0" }, new[] { "claude", "1" }, new[] { "todos", "1" },
-            new[] { "timer", "0" }, new[] { "pomodoro", "0" }, new[] { "github", "0" }, new[] { "worldclock", "0" },
-            new[] { "tray", "1" }, new[] { "toggles", "0" }, new[] { "volume", "1" }, new[] { "battery", "1" },
-            new[] { "today", "1" }, new[] { "flipclock", "0" }, new[] { "clock", "0" },
-        };
         public static Config Current = Normalize(new Config());
         public static int Version;
         public static event Action Changed;
@@ -70,8 +63,11 @@ namespace Lilbar
         {
             if (c.Items == null) c.Items = new List<ItemCfg>();
             var seen = new HashSet<string>();
-            c.Items.RemoveAll(i => i == null || !Array.Exists(Defaults, d => d[0] == i.Id) || !seen.Add(i.Id));
-            foreach (string[] d in Defaults) if (!seen.Contains(d[0])) c.Items.Add(new ItemCfg { Id = d[0], On = d[1] == "1" });
+            c.Items.RemoveAll(i => i == null || Catalog.Get(i.Id) == null || !seen.Add(i.Id));
+            foreach (CatalogItem d in Catalog.All) if (!seen.Contains(d.Id)) c.Items.Add(new ItemCfg { Id = d.Id, On = d.On });
+            if (c.Keys == null) c.Keys = new Dictionary<string, string>();
+            if (c.Values == null) c.Values = new Dictionary<string, string>();
+            if (c.Notes == null) c.Notes = new List<string>();
             if (c.PinOrder == null) c.PinOrder = new List<string>();
             if (c.PinHidden == null) c.PinHidden = new List<string>();
             if (c.FolderApps == null) c.FolderApps = new List<string>();
@@ -111,9 +107,16 @@ namespace Lilbar
     static class Weather
     {
         public static double Temp = double.NaN, Hi = double.NaN, Lo = double.NaN;
-        public static int Code = -1;
+        public static int Code = -1, Stamp;
+        public static double Wind = double.NaN, Humidity = double.NaN;
+        public static DateTime Sunrise, Sunset;
+        public static volatile List<WHour> Hours = new List<WHour>();
+        public static volatile List<WDay> Days = new List<WDay>();
         public static volatile string City, Error;
         static string lat, lon;
+
+        public class WHour { public DateTime T; public double Temp; public int Code; }
+        public class WDay { public DateTime D; public double Hi, Lo; public int Code, Rain; }
         static DateTime next = DateTime.MinValue;
         static int busy;
 
@@ -156,8 +159,24 @@ namespace Lilbar
                 City = ip.TryGetValue("city", out o) ? o as string : null;
             }
             Parse(Get("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon +
-                "&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1"));
+                "&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m&hourly=temperature_2m,weather_code&forecast_hours=7" +
+                "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max&timezone=auto&forecast_days=5"));
             Error = null;
+        }
+
+        static List<object> L(Dictionary<string, object> d, string k)
+        {
+            object o;
+            var l = d != null && d.TryGetValue(k, out o) ? o as IList : null;
+            var r = new List<object>();
+            if (l != null) foreach (object x in l) r.Add(x);
+            return r;
+        }
+
+        static DateTime Time(object o)
+        {
+            DateTime t;
+            return o is string && DateTime.TryParse((string)o, CultureInfo.InvariantCulture, DateTimeStyles.None, out t) ? t : DateTime.MinValue;
         }
 
         public static void Parse(Dictionary<string, object> w)
@@ -170,12 +189,42 @@ namespace Lilbar
                 Temp = Num(cur.TryGetValue("temperature_2m", out o) ? o : null);
                 double c = Num(cur.TryGetValue("weather_code", out o) ? o : null);
                 Code = double.IsNaN(c) ? -1 : (int)c;
+                Wind = Num(cur.TryGetValue("wind_speed_10m", out o) ? o : null);
+                Humidity = Num(cur.TryGetValue("relative_humidity_2m", out o) ? o : null);
             }
             if (daily != null)
             {
                 Hi = Num(First(daily.TryGetValue("temperature_2m_max", out o) ? o : null));
                 Lo = Num(First(daily.TryGetValue("temperature_2m_min", out o) ? o : null));
+                List<object> t = L(daily, "time"), hi = L(daily, "temperature_2m_max"), lo = L(daily, "temperature_2m_min"),
+                    code = L(daily, "weather_code"), rain = L(daily, "precipitation_probability_max"), rise = L(daily, "sunrise"), set = L(daily, "sunset");
+                var days = new List<WDay>();
+                for (int i = 0; i < t.Count; i++)
+                    days.Add(new WDay
+                    {
+                        D = Time(t[i]), Hi = i < hi.Count ? Num(hi[i]) : double.NaN, Lo = i < lo.Count ? Num(lo[i]) : double.NaN,
+                        Code = i < code.Count && code[i] != null ? (int)Num(code[i]) : -1, Rain = i < rain.Count && rain[i] != null ? (int)Num(rain[i]) : -1,
+                    });
+                Days = days;
+                if (rise.Count > 0) Sunrise = Time(rise[0]);
+                if (set.Count > 0) Sunset = Time(set[0]);
             }
+            var hourly = w.TryGetValue("hourly", out o) ? o as Dictionary<string, object> : null;
+            if (hourly != null)
+            {
+                List<object> t = L(hourly, "time"), temp = L(hourly, "temperature_2m"), code = L(hourly, "weather_code");
+                var hours = new List<WHour>();
+                for (int i = 0; i < t.Count; i++)
+                    hours.Add(new WHour { T = Time(t[i]), Temp = i < temp.Count ? Num(temp[i]) : double.NaN, Code = i < code.Count && code[i] != null ? (int)Num(code[i]) : -1 });
+                Hours = hours;
+            }
+            Stamp++;
+        }
+
+        public static string DayShort(DateTime d)
+        {
+            if (d.Date == DateTime.Today) return "Nay";
+            return d.DayOfWeek == DayOfWeek.Sunday ? "CN" : "T" + ((int)d.DayOfWeek + 1);
         }
 
         static object First(object o) { var l = o as IList; return l != null && l.Count > 0 ? l[0] : null; }
@@ -230,7 +279,11 @@ namespace Lilbar
             Wins = Sys.Windows();
             TrayHost.Prune();
             if (Config.Has("claude")) Claude.MaybeFetch(asyncDone);
-            if (Config.Has("today")) Weather.MaybeFetch(asyncDone);
+            if (Config.Current.Items.Exists(i => i.On && WeatherIds.Contains(i.Id))) Weather.MaybeFetch(asyncDone);
+            if (Config.Has("currency")) Currency.MaybeFetch(asyncDone);
+            if (Config.Has("calendar")) Calendar.MaybeFetch(asyncDone);
+            if (Config.Has("screentime") || Config.Has("timeline")) ScreenTime.Tick();
+            if (tick % 5 == 1) Files.Tick(Config.Has("recent"), Config.Has("downloads"), Config.Has("screenshots"), Config.Has("recycle"), Config.Has("storage"));
             if (Config.Has("github")) GitHub.MaybeFetch(asyncDone);
             if (Config.Has("network")) Net.Tick();
             if (Config.Has("volume")) Audio.Tick();
@@ -253,6 +306,9 @@ namespace Lilbar
             return list;
         }
 
+        static readonly List<string> WeatherIds = new List<string> { "today", "weekstrip", "clockweather", "weather", "weatherdetail", "weatherstatus", "hourly", "forecast", "todayforecast", "sun", "timeline" };
+        static readonly string[] SecondIds = { "analog", "analogdark", "segment" }; // tiles that change every second
+
         static string LimitSig(Claude.Limit l) { return l == null ? "-" : l.Pct + "@" + l.Reset.ToString("HHmm"); }
 
         // Everything a dock draws; docks repaint only when this changes.
@@ -272,6 +328,15 @@ namespace Lilbar
             s.Append('h').Append(Thermal.C).Append('x').Append(Countdown.Remaining()).Append(Countdown.Running);
             s.Append('p').Append(Pomodoro.Remaining()).Append(Pomodoro.Running).Append(Pomodoro.Phase).Append(Pomodoro.Round);
             s.Append('g').Append(GitHub.Unread).Append(GitHub.Total).Append(GitHub.Error);
+            s.Append('w').Append(Weather.Stamp).Append('s').Append(Stopwatch2.Elapsed().TotalSeconds.ToString("0")).Append(Stopwatch2.Laps.Count);
+            if (Array.Exists(SecondIds, Config.Has)) s.Append(DateTime.Now.Second);
+            if (Media.Has) s.Append((int)(Media.Progress() * 200)); // media bars move in half-percent steps
+            s.Append('f').Append(Files.Recent.Count > 0 ? Files.Recent[0].Path : "").Append(Files.Download != null ? Files.Download.Path : "")
+                .Append(Files.Shots.Count > 0 ? Files.Shots[0].Path : "").Append(Files.BinItems).Append(Files.Free >> 26);
+            s.Append('k').Append(Config.Has("language") ? Desk.LangCode() : "").Append(Config.Has("theme") && Desk.Dark());
+            s.Append('e').Append(Calendar.Upcoming.Count > 0 ? Calendar.Upcoming[0].Title + Calendar.Upcoming[0].Start.Ticks : "").Append(Calendar.Error);
+            s.Append('$').Append(Currency.Base).Append(Currency.Rates != null).Append(Currency.Error);
+            if (Config.Has("screentime") || Config.Has("timeline")) s.Append(ScreenTime.TotalSeconds() / 60);
             return s.ToString();
         }
     }
