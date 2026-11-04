@@ -13,7 +13,7 @@ namespace Lilbar
     {
         public static float Scale = 1;
         public static readonly Color Blue = Color.FromArgb(255, 74, 155, 255);
-        public static readonly Color Dim = Color.FromArgb(200, 255, 255, 255);
+        public static readonly Color Dim = Color.FromArgb(225, 255, 255, 255);
         public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge;
         static readonly Bitmap measureBmp = new Bitmap(1, 1);
 
@@ -26,21 +26,21 @@ namespace Lilbar
             string text = Has("Segoe UI Variable Text") ? "Segoe UI Variable Text" : "Segoe UI";
             string semi = Has("Segoe UI Variable Text Semibold") ? "Segoe UI Variable Text Semibold" : "Segoe UI Semibold";
             string disp = Has("Segoe UI Variable Display") ? "Segoe UI Variable Display" : "Segoe UI";
-            Time = F(disp, 15, FontStyle.Bold);
-            Date = F(text, 11, FontStyle.Regular);
-            Value = F(semi, 11.5f, FontStyle.Regular);
-            Label = F(semi, 8, FontStyle.Regular);
-            Batt = F(disp, 14, FontStyle.Bold);
+            Time = F(disp, 16, FontStyle.Bold);
+            Date = F(semi, 11.5f, FontStyle.Regular);
+            Value = F(semi, 12.5f, FontStyle.Regular);
+            Label = F(semi, 8.5f, FontStyle.Regular);
+            Batt = F(disp, 15, FontStyle.Bold);
             Bolt = F("Segoe UI Symbol", 11, FontStyle.Regular);
-            Row = F(semi, 10.5f, FontStyle.Regular);
-            Day = F(semi, 10, FontStyle.Regular);
-            DateBig = F(disp, 14, FontStyle.Bold);
+            Row = F(semi, 12, FontStyle.Regular);
+            Day = F(semi, 11, FontStyle.Regular);
+            DateBig = F(disp, 15, FontStyle.Bold);
             Glyph = F("Segoe UI Symbol", 13, FontStyle.Regular);
             Sym = F("Segoe UI Symbol", 11, FontStyle.Regular);
             Big = F(disp, 18, FontStyle.Regular);
             Body = F(text, 12.5f, FontStyle.Regular);
-            Small = F(text, 11.5f, FontStyle.Regular);
-            Header = F(semi, 11, FontStyle.Regular);
+            Small = F(text, 12.5f, FontStyle.Regular);
+            Header = F(semi, 12, FontStyle.Regular);
             Title = F(Has("Segoe UI Variable Display Semib") ? "Segoe UI Variable Display Semib" : "Segoe UI Semibold", 17, FontStyle.Regular);
             Mdl = F("Segoe MDL2 Assets", 14, FontStyle.Regular); // Windows' own icon font
             MdlSmall = F("Segoe MDL2 Assets", 11, FontStyle.Regular);
@@ -152,7 +152,7 @@ namespace Lilbar
             {
                 // On clear glass (grayscale AA) a faint drop shadow keeps text legible over any wallpaper; opaque windows use ClearType and need none.
                 if (g.TextRenderingHint != TextRenderingHint.ClearTypeGridFit && c.A > 120)
-                    using (var sh = new SolidBrush(Color.FromArgb(c.A * 70 / 255, 0, 0, 0))) g.DrawString(s, f, sh, new Rectangle(r.X, r.Y + 1, r.Width, r.Height), sf);
+                    using (var sh = new SolidBrush(Color.FromArgb(c.A * 50 / 255, 0, 0, 0))) g.DrawString(s, f, sh, new Rectangle(r.X, r.Y + 1, r.Width, r.Height), sf);
                 using (var b = new SolidBrush(c)) g.DrawString(s, f, b, r, sf);
             }
         }

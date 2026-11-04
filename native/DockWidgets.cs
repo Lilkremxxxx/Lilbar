@@ -94,7 +94,7 @@ namespace Lilbar
             string glyph = muted ? MdlMute : level == 0 ? "" : level < 34 ? "" : level < 67 ? "" : "";
             return new Seg
             {
-                W = S(118),
+                W = S(96) + Glass.Measure("100%", Glass.Row), // room for the widest label at the current font
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);
