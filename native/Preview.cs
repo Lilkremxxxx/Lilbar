@@ -128,7 +128,7 @@ namespace Lilbar
                     int tx = c.R.X + S(10);
                     if (icon != null) { g.DrawImage(icon, new Rectangle(tx, c.R.Y + S(7), S(16), S(16))); tx += S(22); }
                     int right = i == hover ? c.Close.X - S(2) : c.R.Right - S(8);
-                    Glass.Text(g, c.W.Title, Glass.Small, Color.White, new Rectangle(tx, c.R.Y + S(4), right - tx, S(22)), StringAlignment.Near);
+                    Glass.Text(g, c.W.Title, Glass.Row, Color.White, new Rectangle(tx, c.R.Y + S(4), right - tx, S(22)), StringAlignment.Near);
                     if (i == hover)
                     {
                         if (hoverClose) Glass.Fill(g, c.Close, S(5), Color.FromArgb(255, 196, 43, 28));

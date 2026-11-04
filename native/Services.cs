@@ -30,6 +30,7 @@ namespace Lilbar
         public List<ItemCfg> Items { get; set; }       // dock tiles, left to right
         public List<string> PinOrder { get; set; }     // pinned app names, in display order
         public List<string> PinHidden { get; set; }    // pinned app names not shown on the dock
+        public List<string> QuickHidden { get; set; }  // quick toggle buttons taken off the bar (wifi, bluetooth, hotspot, airplane, battery, quick)
         public List<string> TrayPinned { get; set; }   // exe paths shown next to the arrow; null = follow Windows
         public string FolderName { get; set; }
         public List<string> FolderApps { get; set; }   // .exe/.lnk paths
@@ -70,6 +71,7 @@ namespace Lilbar
             if (c.Notes == null) c.Notes = new List<string>();
             if (c.PinOrder == null) c.PinOrder = new List<string>();
             if (c.PinHidden == null) c.PinHidden = new List<string>();
+            if (c.QuickHidden == null) c.QuickHidden = new List<string>();
             if (c.FolderApps == null) c.FolderApps = new List<string>();
             if (string.IsNullOrEmpty(c.FolderName)) c.FolderName = "Thư mục";
             if (c.Align != "left") c.Align = "center";

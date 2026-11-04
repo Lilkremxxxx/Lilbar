@@ -11,7 +11,7 @@ namespace Lilbar
     // Tiles for the widget set: media, network, volume, radios, temperature, clocks, timers, todos, GitHub.
     partial class Dock
     {
-        const string MdlPlay = "", MdlPause = "", MdlNext = "", MdlPrev = "", MdlMute = "",
+        const string MdlPlay = "play", MdlPause = "pause", MdlNext = "skip-forward", MdlPrev = "", MdlMute = "",
             MdlWifi = "", MdlBluetooth = "", MdlMusic = "", MdlBell = "";
 
         static string Mmss(int secs) { return (secs / 60).ToString("00") + ":" + (secs % 60).ToString("00"); }
@@ -20,7 +20,7 @@ namespace Lilbar
         {
             bool hov = AddHit(c, null, b => click(), tipText, false);
             Glass.Fill(g, c, c.Height / 2, hov ? Color.FromArgb(Math.Min(255, fill.A + 40), fill.R, fill.G, fill.B) : fill);
-            Glass.Center(g, glyph, Glass.MdlSmall, Color.White, c);
+            Glass.Icon(g, glyph, Glass.MdlSmall, Color.White, c, c.Height * 9 / 16);
             return hov;
         }
 
@@ -104,7 +104,7 @@ namespace Lilbar
             if (Audio.Level < 0) return null;
             int level = Audio.Level;
             bool muted = Audio.Muted;
-            string glyph = muted ? MdlMute : level == 0 ? "" : level < 34 ? "" : level < 67 ? "" : "";
+            string glyph = muted || level == 0 ? "volume-close" : level < 50 ? "volume-low" : "volume-high";
             return new Seg
             {
                 W = S(96) + Glass.Measure("100%", Glass.Row), // room for the widest label at the current font
@@ -116,7 +116,7 @@ namespace Lilbar
                     var ic = new Rectangle(r.X + S(4), r.Y, S(28), r.Height);
                     bool hov = AddHit(ic, null, b => Audio.ToggleMute(), tipText, false, wheel);
                     if (hov) Glass.Fill(g, new Rectangle(ic.X, r.Y + S(5), ic.Width, r.Height - S(10)), S(6), Color.FromArgb(36, 255, 255, 255));
-                    Glass.Center(g, glyph, Glass.Mdl, muted ? Glass.Dim : Color.White, ic);
+                    Glass.Icon(g, glyph, Glass.Mdl, muted ? Glass.Dim : Color.White, ic, S(20));
                     var bar = new Rectangle(ic.Right + S(4), r.Y + r.Height / 2 - S(2), S(50), S(4));
                     var barHit = new Rectangle(bar.X - S(2), r.Y, bar.Width + S(4), r.Height);
                     AddHit(barHit, null, b =>
@@ -133,7 +133,7 @@ namespace Lilbar
             };
         }
 
-        class Quickie { public string Glyph, Name, Text; public int State; public Action Click; public Color? Tint; }
+        class Quickie { public string Key, Glyph, Name, Text; public int State; public Action Click; public Color? Tint; }
 
         // Quick toggles: Wi-Fi, Bluetooth, mobile hotspot, airplane mode and, on laptops, the battery.
         // Each is a button almost as tall as the tile with a Fluent icon that fills most of it; blue when on.
@@ -143,25 +143,29 @@ namespace Lilbar
             foreach (Radios.R it in Radios.List)
             {
                 Radios.R radio = it;
-                list.Add(new Quickie { Glyph = radio.WiFi ? "" : "", Name = radio.WiFi ? "Wi-Fi" : "Bluetooth", State = radio.On ? 1 : 0, Click = () => Radios.Toggle(radio) });
+                list.Add(new Quickie { Key = radio.WiFi ? "wifi" : "bluetooth", Glyph = radio.WiFi ? "wifi-high" : "bluetooth", Name = radio.WiFi ? "Wi-Fi" : "Bluetooth", State = radio.On ? 1 : 0, Click = () => Radios.Toggle(radio) });
             }
-            if (Quick.Hotspot >= 0) list.Add(new Quickie { Glyph = "", Name = "Điểm phát sóng", State = Quick.Hotspot, Click = Quick.ToggleHotspot });
-            if (Quick.Airplane >= 0) list.Add(new Quickie { Glyph = "", Name = "Chế độ máy bay", State = Quick.Airplane, Click = Quick.ToggleAirplane });
+            if (Quick.Hotspot >= 0) list.Add(new Quickie { Key = "hotspot", Glyph = "broadcast", Name = "Điểm phát sóng", State = Quick.Hotspot, Click = Quick.ToggleHotspot });
+            if (Quick.Airplane >= 0) list.Add(new Quickie { Key = "airplane", Glyph = "plane", Name = "Chế độ máy bay", State = Quick.Airplane, Click = Quick.ToggleAirplane });
             PowerStatus ps = SystemInformation.PowerStatus;
             if ((ps.BatteryChargeStatus & (BatteryChargeStatus.NoSystemBattery | BatteryChargeStatus.Unknown)) == 0)
             {
                 int pct = (int)Math.Round(ps.BatteryLifePercent * 100);
                 bool charging = ps.PowerLineStatus == PowerLineStatus.Online;
-                int level = Math.Max(0, Math.Min(10, (pct + 5) / 10));
                 list.Add(new Quickie
                 {
-                    Glyph = ((char)((charging ? 0xEBAB : 0xEBA0) + level)).ToString(), Name = "Pin", Text = pct + "%", State = -1,
+                    Key = "battery", Glyph = charging ? "battery-charging" : pct <= 10 ? "battery-empty" : pct <= 35 ? "battery-low" : pct <= 70 ? "battery-medium" : "battery-full",
+                    Name = "Pin", Text = pct + "%", State = -1,
                     Tint = pct <= 20 && !charging ? Color.FromArgb(255, 255, 69, 58) : (Color?)null,
                     Click = () => Sys.WinKey(0x41), // Win+A: Quick Settings
                 });
             }
             // One button for the whole Windows Quick Settings panel (Wi-Fi list, hotspot, airplane, cast, …).
-            list.Add(new Quickie { Glyph = "", Name = "Cài đặt nhanh", Text = null, State = -1, Click = () => Sys.WinKey(0x41) });
+            list.Add(new Quickie { Key = "quick", Glyph = "settings", Name = "Cài đặt nhanh", Text = null, State = -1, Click = () => Sys.WinKey(0x41) });
+            // Buttons hidden from the bar stay listed (dimmed) in edit mode so they can be brought back.
+            List<string> hidden = Config.Current.QuickHidden;
+            if (!Editing) list.RemoveAll(q => hidden.Contains(q.Key));
+            if (list.Count == 0) return null;
             int btn = S(34), gap = S(4), w = S(3);
             foreach (Quickie q in list) w += (q.Text != null ? btn + Glass.Measure(q.Text, Glass.Row) + S(4) : btn) + gap;
             return new Seg
@@ -179,10 +183,23 @@ namespace Lilbar
                         string state = it.State == 1 ? "đang bật" : it.State == 2 ? "đang chuyển…" : "đang tắt";
                         string tipText = it.State < 0 ? it.Name + (it.Text != null ? " " + it.Text : "") + "\nBấm để mở Cài đặt nhanh của Windows" : it.Name + ": " + state + "\nBấm để " + (it.State == 1 ? "tắt" : "bật");
                         bool hov = AddHit(c, null, b => it.Click(), tipText, false);
+                        bool off = hidden.Contains(it.Key);
                         Color bg = it.State == 1 ? Glass.Blue : it.State == 2 ? Color.FromArgb(150, 74, 155, 255) : Color.FromArgb(hov ? 46 : 24, 255, 255, 255);
+                        Color fg = it.Tint ?? Color.White;
+                        if (off) { bg = Color.FromArgb(bg.A / 3, bg); fg = Color.FromArgb(90, fg); }
                         Glass.Fill(g, c, S(9), bg);
-                        Glass.Center(g, it.Glyph, Glass.Fluent, it.Tint ?? Color.White, new Rectangle(c.X, c.Y, btn, btn));
-                        if (it.Text != null) Glass.Text(g, it.Text, Glass.Row, it.Tint ?? Color.White, new Rectangle(c.X + btn - S(4), c.Y, bw - btn + S(2), btn), StringAlignment.Near);
+                        Glass.Icon(g, it.Glyph, Glass.Fluent, fg, new Rectangle(c.X, c.Y, btn, btn), S(22));
+                        if (it.Text != null) Glass.Text(g, it.Text, Glass.Row, fg, new Rectangle(c.X + btn - S(4), c.Y, bw - btn + S(2), btn), StringAlignment.Near);
+                        if (Editing)
+                        {
+                            string key = it.Key;
+                            editHits.Add(new Hit
+                            {
+                                R = Badge(g, c, off ? "" : "", off ? Glass.Blue : Color.FromArgb(235, 70, 70, 78)),
+                                Tip = off ? "Hiện " + it.Name + " trên thanh" : "Ẩn " + it.Name,
+                                Up = b => { if (off) hidden.Remove(key); else hidden.Add(key); Config.Apply(); },
+                            });
+                        }
                         x += bw + gap;
                     }
                 }

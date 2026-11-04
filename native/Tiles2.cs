@@ -589,7 +589,7 @@ namespace Lilbar
                     var rc = new RectangleF(c.X + w / 2, c.Y + w / 2, c.Width - w, c.Height - w);
                     using (var track = new Pen(Color.FromArgb(56, 255, 255, 255), w)) g.DrawEllipse(track, rc);
                     if (prog > 0) using (var bar = new Pen(Color.White, w) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(bar, rc, -90, (float)(360 * prog));
-                    Glass.Center(g, playing ? MdlPause : MdlPlay, Glass.MdlSmall, Color.White, c);
+                    Glass.Icon(g, playing ? MdlPause : MdlPlay, Glass.MdlSmall, Color.White, c, S(16));
                 }
             };
         }

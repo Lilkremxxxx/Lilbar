@@ -14,7 +14,7 @@ namespace Lilbar
         public static float Scale = 1;
         public static readonly Color Blue = Color.FromArgb(255, 74, 155, 255);
         public static readonly Color Dim = Color.FromArgb(225, 255, 255, 255);
-        public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge, Menu, MenuIcon, Fluent, Badge;
+        public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge, Menu, MenuIcon, Fluent, Badge, Caption;
         static readonly Bitmap measureBmp = new Bitmap(1, 1);
 
         public static int S(float v) { return (int)Math.Round(v * Scale); }
@@ -38,9 +38,10 @@ namespace Lilbar
             Glyph = F("Segoe UI Symbol", 13, FontStyle.Regular);
             Sym = F("Segoe UI Symbol", 11, FontStyle.Regular);
             Big = F(disp, 18, FontStyle.Regular);
-            Body = F(text, 12.5f, FontStyle.Regular);
-            Small = F(text, 12.5f, FontStyle.Regular);
-            Header = F(semi, 12, FontStyle.Regular);
+            Body = F(text, 13.5f, FontStyle.Regular);
+            Small = F(text, 13.5f, FontStyle.Regular);
+            Header = F(semi, 13, FontStyle.Regular);
+            Caption = F(semi, 11.5f, FontStyle.Regular);
             Title = F(Has("Segoe UI Variable Display Semib") ? "Segoe UI Variable Display Semib" : "Segoe UI Semibold", 17, FontStyle.Regular);
             Mdl = F("Segoe MDL2 Assets", 14, FontStyle.Regular); // Windows' own icon font
             MdlSmall = F("Segoe MDL2 Assets", 11, FontStyle.Regular);
@@ -48,7 +49,7 @@ namespace Lilbar
             Strike = F(text, 12.5f, FontStyle.Strikeout);
             GlyphBig = F("Segoe UI Symbol", 19, FontStyle.Regular);
             Huge = F(disp, 22, FontStyle.Bold);
-            Menu = F(semi, 14, FontStyle.Regular);
+            Menu = F(semi, 15, FontStyle.Regular);
             MenuIcon = F("Segoe MDL2 Assets", 15, FontStyle.Regular);
             Badge = F("Segoe MDL2 Assets", 7, FontStyle.Bold);
             Fluent = F(Has("Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets", 20, FontStyle.Regular); // Windows 11's own Quick Settings icons
@@ -179,6 +180,18 @@ namespace Lilbar
         }
 
         public static void Center(Graphics g, string s, Font f, Color c, Rectangle r) { Text(g, s, f, c, r, StringAlignment.Center); }
+
+        // A coolicons line icon when one has that name, otherwise the glyph as text in font f.
+        public static void Icon(Graphics g, string nameOrGlyph, Font f, Color c, Rectangle r, int px)
+        {
+            if (Icons.Has(nameOrGlyph))
+            {
+                if (g.TextRenderingHint != TextRenderingHint.ClearTypeGridFit && c.A > 120) // same faint shadow as text on clear glass
+                    Icons.Draw(g, nameOrGlyph, new Rectangle(r.X, r.Y + 1, r.Width, r.Height), px, Color.FromArgb(c.A * 110 / 255, 0, 0, 0));
+                Icons.Draw(g, nameOrGlyph, r, px, c);
+            }
+            else Center(g, nameOrGlyph, f, c, r);
+        }
 
         public static void Text(Graphics g, string s, Font f, Color c, Rectangle r, StringAlignment h)
         {

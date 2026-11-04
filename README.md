@@ -44,7 +44,7 @@ native\Lilbar.exe --restore
 
 ## Layout
 
-- `native/` — the dock (C#). The notification-area host in `TrayHost.cs` follows [ManagedShell](https://github.com/cairoshell/ManagedShell) (Apache-2.0).
+- `native/` — the dock (C#). The notification-area host in `TrayHost.cs` follows [ManagedShell](https://github.com/cairoshell/ManagedShell) (Apache-2.0). Line icons in `Icons.cs` are from [coolicons](https://github.com/krystonschwarze/coolicons) by Kryston Schwarze (MIT).
 - `main.js`, `win32.js`, `preload.js`, `index.html` — the earlier Electron prototype.
 - `Project_proposal.md`, `task_board.md`, `Process_phases/` — project notes.
 - `docs/lumabar-reference.md` — feature notes on [lumabar](https://lumabar.xyz), the inspiration. No lumabar code or assets are used.

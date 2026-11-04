@@ -707,7 +707,7 @@ namespace Lilbar
                 segs.Add(new Seg { W = slot + S(8), Draw = (g, r) =>
                 {
                     Glass.Fill(g, r, S(9), Color.FromArgb(40, 255, 255, 255));
-                    Glass.Center(g, "", Glass.Fluent, Color.White, r);
+                    Glass.Icon(g, "plus", Glass.Fluent, Color.White, r, S(22));
                     editHits.Add(new Hit { R = r, Up = b => Manager.OpenSettings(0), Tip = "Thêm widget\nMở thư viện widget trong Cài đặt" });
                 } });
                 segs.Add(new Seg { W = S(70), Draw = (g, r) =>
@@ -1144,10 +1144,10 @@ namespace Lilbar
             bool auto = Startup.On;
             var items = new List<PopItem>
             {
-                new PopItem { Glyph = "", Text = "Cài đặt Lilbar", Up = b => { ClosePopup(); Manager.OpenSettings(0); } },
-                new PopItem { Glyph = auto ? "" : "", Text = "Khởi động cùng Windows", Up = b => { ClosePopup(); Startup.Set(!auto); } },
-                new PopItem { Glyph = "", Text = Editing ? "Xong chỉnh sửa" : "Chỉnh sửa thanh", Up = b => { ClosePopup(); Manager.SetEditing(!Editing); } },
-                new PopItem { Glyph = "", Text = "Thoát Lilbar", Separator = true, Up = b => { ClosePopup(); Manager.Quit(null); } },
+                new PopItem { Glyph = "settings", Text = "Cài đặt Lilbar", Up = b => { ClosePopup(); Manager.OpenSettings(0); } },
+                new PopItem { Glyph = auto ? "check" : "", Text = "Khởi động cùng Windows", Up = b => { ClosePopup(); Startup.Set(!auto); } },
+                new PopItem { Glyph = Editing ? "check" : "pencil", Text = Editing ? "Xong chỉnh sửa" : "Chỉnh sửa thanh", Up = b => { ClosePopup(); Manager.SetEditing(!Editing); } },
+                new PopItem { Glyph = "power", Text = "Thoát Lilbar", Separator = true, Up = b => { ClosePopup(); Manager.Quit(null); } },
             };
             N.POINT p;
             N.GetCursorPos(out p);
@@ -1620,6 +1620,17 @@ namespace Lilbar
             check(Net.Down >= 0 && Net.History.Count == 1, "network sample " + Net.Fmt(Net.Down));
             try { Media.Poll(); check(true, "media session: " + (Media.Has ? Media.Title : "none playing")); }
             catch (Exception e) { check(false, "media " + e.Message); }
+            int drawn = 0;
+            foreach (string name in Icons.Names)
+                using (var b = new Bitmap(24, 24))
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    Icons.Draw(g, name, new Rectangle(0, 0, 24, 24), 24, Color.White);
+                    int ink = 0;
+                    for (int y = 0; y < 24; y++) for (int x = 0; x < 24; x++) if (b.GetPixel(x, y).A > 0) ink++;
+                    if (ink > 20) drawn++;
+                }
+            check(drawn == 22, "coolicons drawn " + drawn + "/22");
             try { Quick.Poll(); check(true, "hotspot " + Quick.Hotspot + ", airplane " + Quick.Airplane + " (-1 = not available)"); }
             catch (Exception e) { check(false, "quick toggles: " + e.Message); }
             try { Radios.Poll(); check(true, "radios: " + string.Join(", ", Radios.List.ConvertAll(x => (x.WiFi ? "Wi-Fi " : "Bluetooth ") + (x.On ? "on" : "off")).ToArray())); }

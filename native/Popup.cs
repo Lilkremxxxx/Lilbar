@@ -9,7 +9,7 @@ namespace Lilbar
     class PopItem
     {
         public Bitmap Icon;
-        public string Glyph, Text, Tip;
+        public string Glyph, Text, Tip; // Glyph: an Icons name or an MDL2 character
         public Action<MouseButtons> Down, Up;
         public bool Right; // forwards right clicks too (tray icons)
         public bool Separator; // a hairline above this menu row
@@ -52,7 +52,7 @@ namespace Lilbar
             int pad = S(10), titleH = title != null ? S(34) : 0, w, h;
             if (grid)
             {
-                int cw = labels ? S(76) : S(44), ch = labels ? S(72) : S(44);
+                int cw = labels ? S(88) : S(46), ch = labels ? S(78) : S(46);
                 int cols = Math.Max(1, Math.Min(labels ? 4 : 5, items.Count)), rows = Math.Max(1, (items.Count + cols - 1) / cols);
                 w = Math.Max(pad * 2 + cols * cw, title != null ? S(180) : 0);
                 h = pad * 2 + titleH + rows * ch;
@@ -62,9 +62,9 @@ namespace Lilbar
             }
             else
             {
-                int rowH = S(40), sep = S(9), y = pad, widest = 0;
+                int rowH = S(42), sep = S(9), y = pad, widest = 0;
                 foreach (PopItem it in items) widest = Math.Max(widest, Glass.Measure(it.Text ?? "", Glass.Menu));
-                w = Math.Max(S(220), widest + S(70));
+                w = Math.Max(S(240), widest + S(74));
                 foreach (PopItem it in items)
                 {
                     if (it.Separator) y += sep;
@@ -138,7 +138,7 @@ namespace Lilbar
                         int iy = labels ? c.Y + S(9) : c.Y + (c.Height - s) / 2;
                         if (it.Icon != null) g.DrawImage(it.Icon, new Rectangle(c.X + (c.Width - s) / 2, iy, s, s));
                         else if (it.Glyph != null) Glass.Center(g, it.Glyph, Glass.Glyph, Color.White, new Rectangle(c.X, iy, c.Width, s));
-                        if (labels) Glass.Center(g, it.Text ?? "", Glass.Label, Color.White, new Rectangle(c.X + S(3), c.Y + S(46), c.Width - S(6), S(18)));
+                        if (labels) Glass.Center(g, it.Text ?? "", Glass.Caption, Color.White, new Rectangle(c.X + S(3), c.Y + S(48), c.Width - S(6), S(20)));
                         if (it.Badge != null)
                         {
                             var bd = new Rectangle(c.Right - S(17), c.Y + S(3), S(14), S(14));
@@ -149,7 +149,7 @@ namespace Lilbar
                     else
                     {
                         var ic = new Rectangle(c.X + S(8), c.Y, S(28), c.Height);
-                        if (!string.IsNullOrEmpty(it.Glyph)) Glass.Center(g, it.Glyph, Glass.MenuIcon, Color.White, ic);
+                        if (!string.IsNullOrEmpty(it.Glyph)) Glass.Icon(g, it.Glyph, Glass.MenuIcon, Color.White, ic, S(19));
                         Glass.Text(g, it.Text ?? "", Glass.Menu, Color.White, new Rectangle(ic.Right + S(8), c.Y, c.Right - ic.Right - S(14), c.Height), StringAlignment.Near);
                     }
                 }
@@ -260,9 +260,9 @@ namespace Lilbar
                 StartPosition = FormStartPosition.Manual;
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.Opaque, true);
                 int w = 0;
-                for (int i = 0; i < lines.Length; i++) w = Math.Max(w, Glass.Measure(lines[i], i == 0 ? Glass.Row : Glass.Small));
-                w += S(24);
-                int h = S(12) + lines.Length * S(20);
+                for (int i = 0; i < lines.Length; i++) w = Math.Max(w, Glass.Measure(lines[i], i == 0 ? Glass.Menu : Glass.Small));
+                w += S(28);
+                int h = S(14) + lines.Length * S(22);
                 Rectangle sb = Screen.FromPoint(at).Bounds;
                 int x = Math.Max(sb.Left + S(4), Math.Min(at.X - S(8), sb.Right - w - S(4)));
                 int y = above ? at.Y - S(8) - h : at.Y;
@@ -298,7 +298,7 @@ namespace Lilbar
                     Glass.Shadow(g, panel, S(10));
                     Glass.Panel(g, panel);
                     for (int i = 0; i < lines.Length; i++)
-                        Glass.Text(g, lines[i], i == 0 ? Glass.Row : Glass.Small, i == 0 ? Color.White : Glass.Dim, new Rectangle(M + S(12), M + S(6) + i * S(20), panel.Width - S(20), S(20)), StringAlignment.Near);
+                        Glass.Text(g, lines[i], i == 0 ? Glass.Menu : Glass.Small, i == 0 ? Color.White : Glass.Dim, new Rectangle(M + S(14), M + S(7) + i * S(22), panel.Width - S(22), S(22)), StringAlignment.Near);
                 }
             }
 
