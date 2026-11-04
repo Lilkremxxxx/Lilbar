@@ -35,7 +35,7 @@ namespace Lilbar
             if (!Media.Has) // enabled but nothing playing: say so instead of vanishing
                 return new Seg
                 {
-                    W = S(176),
+                    W = Glass.ST(176),
                     Draw = (g, r) =>
                     {
                         Glass.Tile(g, r);
@@ -49,7 +49,7 @@ namespace Lilbar
             bool playing = Media.Playing;
             return new Seg
             {
-                W = S(250),
+                W = Glass.ST(250),
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);

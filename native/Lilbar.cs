@@ -1150,7 +1150,7 @@ namespace Lilbar
             if (!Claude.Available) return null;
             return new Seg
             {
-                W = S(206),
+                W = Glass.ST(206),
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);
@@ -1175,17 +1175,17 @@ namespace Lilbar
         // One "5h ████░░ 33%  2h59" row of the Claude tile.
         static void UsageRow(Graphics g, Rectangle tile, int y, string label, Claude.Limit l)
         {
-            int rowH = S(15), x = tile.X + S(8);
-            Glass.Text(g, label, Glass.Row, Glass.Dim, new Rectangle(x, y, S(26), rowH), StringAlignment.Near);
-            var bar = new Rectangle(x + S(26), y + rowH / 2 - S(2), S(60), S(4));
+            int rowH = S(15), x = tile.X + S(8), lw = Glass.ST(26), pw = Glass.ST(36);
+            Glass.Text(g, label, Glass.Row, Glass.Dim, new Rectangle(x, y, lw, rowH), StringAlignment.Near);
+            var bar = new Rectangle(x + lw, y + rowH / 2 - S(2), S(60), S(4));
             Glass.Fill(g, bar, S(2), Color.FromArgb(50, 255, 255, 255));
             if (l == null) return;
             double p = Math.Max(0, Math.Min(100, l.Pct));
             Color c = p >= 90 ? Color.FromArgb(255, 255, 69, 58) : p >= 70 ? Color.FromArgb(255, 255, 159, 10) : Color.FromArgb(255, 52, 199, 89);
             if (p > 0) Glass.Fill(g, new Rectangle(bar.X, bar.Y, Math.Max(S(4), (int)(bar.Width * p / 100)), bar.Height), S(2), c);
-            Glass.Text(g, Math.Round(p) + "%", Glass.Row, Color.White, new Rectangle(bar.Right, y, S(36), rowH), StringAlignment.Far);
+            Glass.Text(g, Math.Round(p) + "%", Glass.Row, Color.White, new Rectangle(bar.Right, y, pw, rowH), StringAlignment.Far);
             if (l.Reset > DateTime.MinValue)
-                Glass.Text(g, Until(l.Reset), Glass.Row, Glass.Dim, new Rectangle(bar.Right + S(36), y, tile.Right - bar.Right - S(36) - S(8), rowH), StringAlignment.Far);
+                Glass.Text(g, Until(l.Reset), Glass.Row, Glass.Dim, new Rectangle(bar.Right + pw, y, tile.Right - bar.Right - pw - S(8), rowH), StringAlignment.Far);
         }
 
         Seg TraySeg()
@@ -1547,8 +1547,9 @@ namespace Lilbar
         public static void Start()
         {
             ui = new WindowsFormsSynchronizationContext();
-            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) Glass.Init(g.DpiX / 96f);
             Config.Load();
+            Glass.T = Config.Current.TextScale / 100f;
+            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) Glass.Init(g.DpiX / 96f);
             Replace = Config.Current.Replace;
             if (Replace)
             {
@@ -1588,6 +1589,15 @@ namespace Lilbar
         }
 
         static int ticks;
+
+        // Settings → Cỡ chữ: rebuild the fonts and redraw every strip.
+        public static void ApplyTextScale()
+        {
+            Glass.T = Config.Current.TextScale / 100f;
+            Glass.Init(Glass.Scale);
+            lastSig = null;
+            foreach (Dock d in docks) d.Redraw();
+        }
 
         public static void SetEditing(bool on)
         {

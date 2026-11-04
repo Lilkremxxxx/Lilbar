@@ -34,7 +34,8 @@ namespace Lilbar
         public List<string> QuickHidden { get; set; }  // quick toggle buttons taken off the bar (wifi, bluetooth, hotspot, airplane, battery, quick)
         public List<string> TrayPinned { get; set; }   // exe paths shown next to the arrow; null = follow Windows
         public string FolderName { get; set; }
-        public bool Replace { get; set; }               // experimental: replace the Windows taskbar instead of sitting inside it
+        public bool Replace { get; set; }
+        public int TextScale { get; set; }              // dock text size in percent, 80–120               // experimental: replace the Windows taskbar instead of sitting inside it
         public List<string> FolderApps { get; set; }   // .exe/.lnk paths
         public string Align { get; set; }              // "center" | "left"
         public List<string> Cities { get; set; }       // world clock time zone ids, "" = slot off
@@ -81,6 +82,7 @@ namespace Lilbar
             while (c.Cities.Count < 3) c.Cities.Add("");
             if (c.Cities.Count > 3) c.Cities.RemoveRange(3, c.Cities.Count - 3);
             if (c.TimerMinutes <= 0) c.TimerMinutes = 5;
+            if (c.TextScale < 80 || c.TextScale > 120) c.TextScale = 100; // above 120 % two-line tiles no longer fit a 48 px taskbar
             if (c.FocusMin <= 0) c.FocusMin = 25;
             if (c.BreakMin <= 0) c.BreakMin = 5;
             if (c.LongBreakMin <= 0) c.LongBreakMin = 15;

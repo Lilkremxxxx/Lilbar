@@ -19,6 +19,11 @@ namespace Lilbar
 
         public static int S(float v) { return (int)Math.Round(v * Scale); }
 
+        // The user's text size (Settings → Cỡ chữ, 0.8–1.2). Fonts follow it, and so do the widths of tiles that hold
+        // text (ST), so bigger text makes the tile wider instead of cutting words off.
+        public static float T = 1;
+        public static int ST(float v) { return (int)Math.Round(v * Scale * T); }
+
         public static void Init(float scale)
         {
             Scale = scale;
@@ -60,7 +65,7 @@ namespace Lilbar
             using (var f = new Font(family, 10)) return f.Name == family; // GDI+ silently substitutes a missing family
         }
 
-        static Font F(string family, float px, FontStyle style) { return new Font(family, px * Scale, style, GraphicsUnit.Pixel); }
+        static Font F(string family, float px, FontStyle style) { return new Font(family, px * Scale * T, style, GraphicsUnit.Pixel); }
 
         public static int Measure(string s, Font f)
         {
