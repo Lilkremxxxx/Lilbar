@@ -25,6 +25,16 @@ The widget set covers the same functions as [lumabar](https://lumabar.xyz)'s lib
 
 The Claude Code widget reads the sign-in Claude Code already stores in `~/.claude/.credentials.json` and asks `api.anthropic.com` for your 5-hour and weekly limits, at most every 5 minutes. The token never goes anywhere else. If Claude Code isn't installed, the widget doesn't appear.
 
+## Download and install
+
+1. Download [`release/Lilbar-1.0.0.zip`](release/Lilbar-1.0.0.zip) and unzip it.
+2. Double-click `install.cmd`. It copies Lilbar to `%LOCALAPPDATA%\Programs\Lilbar`, adds a Start menu shortcut, turns on start with Windows and starts it. No admin rights needed.
+3. Lilbar isn't code-signed, so SmartScreen may say "Windows protected your PC": choose More info → Run anyway.
+
+`uninstall.cmd` removes it again (your settings in `%APPDATA%\Lilbar` stay). Windows 10 or 11, 64-bit; it uses the .NET Framework 4.8 that ships with Windows. `HUONG-DAN.txt` in the zip is a Vietnamese guide.
+
+`releaseelease.cmd` rebuilds the zip.
+
 ## Build and run
 
 ```

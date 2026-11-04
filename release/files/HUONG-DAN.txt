@@ -1,0 +1,30 @@
+LILBAR 1.0 - widget kính trong cho taskbar Windows 11
+
+YÊU CẦU
+- Windows 10 hoặc 11 (64-bit). Không cần cài thêm gì: Lilbar dùng .NET Framework 4.8 có sẵn trong Windows.
+
+CÀI ĐẶT
+1. Giải nén file zip.
+2. Bấm đúp install.cmd.
+   Lilbar được chép vào %LOCALAPPDATA%\Programs\Lilbar, có lối tắt trong Start và tự chạy khi đăng nhập.
+3. Nếu Windows hiện "Windows protected your PC": bấm "More info" rồi "Run anyway".
+   (Lilbar chưa có chữ ký số nên SmartScreen cảnh báo với mọi file tải về.)
+
+Muốn dùng không cần cài: chỉ cần bấm đúp Lilbar.exe.
+
+SỬ DỤNG
+- Widget nằm ngay trên taskbar Windows, cạnh khay hệ thống hoặc ở mép trái.
+- Chuột phải vào widget:
+  - Cài đặt Lilbar: bật/tắt widget, đổi bên Trái/Phải, cỡ chữ, tài khoản.
+  - Chỉnh sửa thanh: kéo thả để sắp xếp, nút ← / → để chuyển bên.
+  - Thoát Lilbar.
+- Widget Claude Code: cần Claude Code đã đăng nhập trên máy đó
+  (Cài đặt → Tài khoản → Đăng nhập).
+
+GỠ CÀI ĐẶT
+- Bấm đúp uninstall.cmd. Cấu hình trong %APPDATA%\Lilbar được giữ lại.
+
+NẾU TASKBAR WINDOWS BIẾN MẤT (chỉ ở chế độ thử nghiệm "Thay hẳn taskbar")
+- Mở Lilbar.exe với tham số --restore, hoặc khởi động lại máy.
+
+Mã nguồn: https://github.com/Lilkremxxxx/Lilbar

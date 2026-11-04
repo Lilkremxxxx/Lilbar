@@ -20,6 +20,12 @@ using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
+[assembly: System.Reflection.AssemblyTitle("Lilbar")]
+[assembly: System.Reflection.AssemblyProduct("Lilbar")]
+[assembly: System.Reflection.AssemblyDescription("Clear-glass widgets for the Windows 11 taskbar")]
+[assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")]
+
 namespace Lilbar
 {
     static class N
