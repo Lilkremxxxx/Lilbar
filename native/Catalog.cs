@@ -92,6 +92,15 @@ namespace Lilbar
             new CatalogItem("sun", WeatherG, "Mặt trời", "Giờ mọc và lặn", false),
 
             new CatalogItem("github", Online, "GitHub", "Thông báo và lịch đóng góp; token trong tab Tiện ích", false),
+            new CatalogItem("githubact", Online, "GitHub, hoạt động", "Lưới đóng góp 20 tuần và chuỗi ngày", false),
+            new CatalogItem("githubov", Online, "GitHub, tổng quan", "Thông báo, PR mở, sao, cần review", false),
+            new CatalogItem("leetcode", Online, "LeetCode", "Số bài và chuỗi ngày theo tên người dùng", false),
+            new CatalogItem("metric", Online, "Giá crypto", "Một cặp từ Binance, mặc định BTCUSDT", false),
+            new CatalogItem("wallpaper", Online, "Hình nền", "Ảnh Bing mỗi ngày, bấm để đặt làm hình nền", false),
+
+            new CatalogItem("stock", Stocks, "Cổ phiếu", "Mã đầu tiên trong danh sách, từ Yahoo Finance", false),
+            new CatalogItem("stockchart", Stocks, "Cổ phiếu, biểu đồ", "Giá trong phiên", false),
+            new CatalogItem("watchlist", Stocks, "Danh sách theo dõi", "Ba mã đầu tiên", false),
         };
 
         public static CatalogItem Get(string id) { return Array.Find(All, c => c.Id == id); }
@@ -114,6 +123,9 @@ namespace Lilbar
             new AccountField("cur_from", "Đổi tiền", "Đổi từ", false, "Mã tiền tệ, ví dụ USD", "USD"),
             new AccountField("cur_to", "Đổi tiền", "Sang", false, "Mã tiền tệ, ví dụ VND", "VND"),
             new AccountField("cur_amount", "Đổi tiền", "Số tiền", false, "Ví dụ 100", "1"),
+            new AccountField("stocks", "Chứng khoán", "Mã theo dõi", false, "Mã Yahoo Finance, cách nhau bằng dấu phẩy. Cổ phiếu Việt Nam thêm .VN, ví dụ VNM.VN", "AAPL,MSFT,NVDA"),
+            new AccountField("metric", "Crypto", "Cặp giá", false, "Cặp trên Binance, ví dụ BTCUSDT, ETHUSDT", "BTCUSDT"),
+            new AccountField("leetcode", "LeetCode", "Tên người dùng", false, "Tên trong đường dẫn leetcode.com/u/<tên>", ""),
         };
 
         public static AccountField Field(string key) { return Fields.Find(f => f.Key == key); }

@@ -1199,6 +1199,14 @@ namespace Lilbar
             check(ScreenTime.Kind(@"C:\x\chrome.exe") == 0 && ScreenTime.Kind("Code.exe") == 1 && ScreenTime.Kind("Discord.exe") == 2 && ScreenTime.Kind("notepad.exe") == 5, "app kinds");
             check(Files.Size(3L << 30) == "3 GB" && Files.Size(5L << 20) == "5 MB", "size format");
             check(Array.TrueForAll(Catalog.All, ci => Array.IndexOf(Catalog.Groups, ci.Group) >= 0) && new HashSet<string>(Array.ConvertAll(Catalog.All, ci => ci.Id)).Count == Catalog.All.Length, "catalog ids unique, groups known");
+            Stocks.Quote sq = Stocks.Parse("AAPL", "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"regularMarketPrice\":210.5,\"chartPreviousClose\":200},\"indicators\":{\"quote\":[{\"close\":[201,null,205.5,210.5]}]}}]}}");
+            check(sq.Price == 210.5 && sq.Line.Count == 3 && Math.Abs(Stocks.Change(sq) - 5.25) < 1e-9, "stock chart parse");
+            Crypto.Parse("BTCUSDT", "{\"symbol\":\"BTCUSDT\",\"lastPrice\":\"101234.50\",\"priceChangePercent\":\"-1.25\"}");
+            check(Crypto.Price == 101234.5 && Crypto.ChangePct == -1.25 && Crypto.Pair("BTCUSDT") == "BTC/USDT", "crypto ticker parse");
+            LeetCode.Parse("me", "{\"data\":{\"matchedUser\":{\"submitStatsGlobal\":{\"acSubmissionNum\":[{\"difficulty\":\"All\",\"count\":120},{\"difficulty\":\"Easy\",\"count\":60},{\"difficulty\":\"Medium\",\"count\":50},{\"difficulty\":\"Hard\",\"count\":10}]},\"userCalendar\":{\"streak\":4}}}}");
+            check(LeetCode.All == 120 && LeetCode.Hard == 10 && LeetCode.Streak == 4, "leetcode parse");
+            List<Wallpapers.Pic> pics = Wallpapers.Parse("{\"images\":[{\"url\":\"/th?id=OHR.Test_1920x1080.jpg&rf=x\",\"copyright\":\"A (B)\"},{\"url\":\"https://evil.example/x.jpg\"}]}");
+            check(pics.Count == 1 && pics[0].Url.StartsWith("https://www.bing.com/th?id=") && pics[0].Id == "OHR.Test_1920x1080.jpg", "bing images parse keeps only bing.com paths");
             Audio.Tick();
             check(Audio.Level >= 0 && Audio.Level <= 100, "volume " + Audio.Level + "% on " + Audio.Device);
             Thermal.Poll();

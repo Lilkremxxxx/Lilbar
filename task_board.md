@@ -15,7 +15,7 @@ _Last updated: 2026-11-04 by claude-code_
 | T-013 | Bỏ bản Electron (main.js, win32.js, preload.js, index.html, node_modules, package*.json) | blocked: chờ user xác nhận xoá | P2 | human | 02_dock_mvp | claude-code | user đồng ý, đã xoá | 2026-11-04 |
 | T-010 | Ẩn dock khi game/video fullscreen; tự chạy khi khởi động | todo | P2 | claude-code | backlog | claude-code | dock biến mất khi app fullscreen | 2026-11-04 |
 | T-024 | Widget độ sáng màn hình | blocked: màn hình không hỗ trợ DDC/CI, WMI không có (máy bàn) | P2 | human | backlog | claude-code | bật DDC/CI trong menu màn hình rồi làm | 2026-11-04 |
-| T-025 | Làm lại toàn bộ chức năng widget lumabar, thiết kế riêng: đợt 2 (internet công khai) | doing | P1 | claude-code | 02_dock_mvp | user | chứng khoán, crypto, LeetCode, hình nền, GitHub tổng quan | 2026-11-04 |
+| T-025 | Làm lại toàn bộ chức năng widget lumabar, thiết kế riêng: đợt 2 (internet công khai) | done: chứng khoán, crypto, LeetCode, hình nền Bing, GitHub hoạt động và tổng quan; chụp với dữ liệu thật | P1 | claude-code | 02_dock_mvp | user | chứng khoán, crypto, LeetCode, hình nền, GitHub tổng quan | 2026-11-04 |
 | T-026 | Đợt 3: widget cần key (doanh thu, phân tích, lập trình, mạng xã hội, Gmail, DeepSeek, GLM) | todo | P2 | claude-code | 02_dock_mvp | user | có parser + self-check, ghi rõ chưa kiểm chứng | 2026-11-04 |
 | T-027 | Widget AI đọc đăng nhập app khác (ChatGPT/Codex, Gemini CLI, Grok, Cursor, OpenCode) | blocked: hệ thống chặn việc đọc file đăng nhập của app khác | P2 | human | backlog | user | user cấp quyền hoặc bỏ | 2026-11-04 |
 | T-023 | Kiểm chứng màn hình thứ hai | blocked: máy chỉ có 1 màn hình | P1 | human | 02_dock_mvp | user | cắm màn hình 2, dock hiện và thanh cũ ẩn | 2026-11-04 |

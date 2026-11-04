@@ -458,7 +458,7 @@ namespace Lilbar
     static class GitHub
     {
         public static volatile string Login, Error;
-        public static volatile int Unread = -1, Total, Streak;
+        public static volatile int Unread = -1, Total, Streak, OpenPRs = -1, Stars, Reviews;
         public static volatile int[] Days = new int[0];
         static DateTime next = DateTime.MinValue;
         static int busy;
@@ -509,8 +509,11 @@ namespace Lilbar
             var js = new JavaScriptSerializer();
             var list = js.DeserializeObject(Call("https://api.github.com/notifications?per_page=50", token, null)) as object[];
             Unread = list == null ? 0 : list.Length;
-            ParseCalendar(Call("https://api.github.com/graphql", token,
-                "{\"query\":\"query{viewer{login contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{contributionCount}}}}}}\"}"));
+            string q = "query{viewer{login pullRequests(states:OPEN){totalCount} " +
+                "repositories(ownerAffiliations:OWNER,first:100,orderBy:{field:STARGAZERS,direction:DESC}){nodes{stargazerCount}} " +
+                "contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{contributionCount}}}}} " +
+                "search(query:\"is:open is:pr review-requested:@me\",type:ISSUE){issueCount}}";
+            ParseCalendar(Call("https://api.github.com/graphql", token, js.Serialize(new Dictionary<string, object> { { "query", q } })));
         }
 
         public static void ParseCalendar(string json)
@@ -530,6 +533,12 @@ namespace Lilbar
             for (; i >= 0 && days[i] > 0; i--) streak++;
             Streak = streak;
             Days = days.ToArray();
+            OpenPRs = Web.Int(Web.At(viewer, "pullRequests.totalCount"));
+            int stars = 0;
+            var repos = Web.At(viewer, "repositories.nodes") as IList;
+            if (repos != null) foreach (object r in repos) stars += Web.Int(Web.At(r, "stargazerCount"));
+            Stars = stars;
+            Reviews = Web.Int(Web.At(d, "data.search.issueCount"));
         }
 
         static Dictionary<string, object> Get(Dictionary<string, object> d, string k)

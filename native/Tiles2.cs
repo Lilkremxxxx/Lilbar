@@ -79,6 +79,14 @@ namespace Lilbar
                 case "forecast": return ForecastSeg(4, false);
                 case "todayforecast": return ForecastSeg(3, true);
                 case "sun": return SunSeg();
+                case "stock": return StockSeg(false);
+                case "stockchart": return StockSeg(true);
+                case "watchlist": return WatchlistSeg();
+                case "metric": return MetricSeg();
+                case "leetcode": return LeetCodeSeg();
+                case "wallpaper": return WallpaperSeg(slot);
+                case "githubact": return GitHubActivitySeg();
+                case "githubov": return GitHubOverviewSeg();
             }
             return null;
         }

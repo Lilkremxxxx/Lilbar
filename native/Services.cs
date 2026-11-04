@@ -284,7 +284,11 @@ namespace Lilbar
             if (Config.Has("calendar")) Calendar.MaybeFetch(asyncDone);
             if (Config.Has("screentime") || Config.Has("timeline")) ScreenTime.Tick();
             if (tick % 5 == 1) Files.Tick(Config.Has("recent"), Config.Has("downloads"), Config.Has("screenshots"), Config.Has("recycle"), Config.Has("storage"));
-            if (Config.Has("github")) GitHub.MaybeFetch(asyncDone);
+            if (Config.Has("github") || Config.Has("githubact") || Config.Has("githubov")) GitHub.MaybeFetch(asyncDone);
+            if (Config.Has("stock") || Config.Has("stockchart") || Config.Has("watchlist")) Stocks.MaybeFetch(asyncDone);
+            if (Config.Has("metric")) Crypto.MaybeFetch(asyncDone);
+            if (Config.Has("leetcode")) LeetCode.MaybeFetch(asyncDone);
+            if (Config.Has("wallpaper")) Wallpapers.MaybeFetch(asyncDone);
             if (Config.Has("network")) Net.Tick();
             if (Config.Has("volume")) Audio.Tick();
             Countdown.Tick(); // timers keep running even while their tiles are hidden
@@ -337,6 +341,8 @@ namespace Lilbar
             s.Append('e').Append(Calendar.Upcoming.Count > 0 ? Calendar.Upcoming[0].Title + Calendar.Upcoming[0].Start.Ticks : "").Append(Calendar.Error);
             s.Append('$').Append(Currency.Base).Append(Currency.Rates != null).Append(Currency.Error);
             if (Config.Has("screentime") || Config.Has("timeline")) s.Append(ScreenTime.TotalSeconds() / 60);
+            s.Append('q').Append(Stocks.Stamp).Append(Crypto.Price).Append(LeetCode.All).Append(LeetCode.Error).Append(Wallpapers.Pics.Count)
+                .Append(GitHub.OpenPRs).Append(GitHub.Stars).Append(GitHub.Reviews);
             return s.ToString();
         }
     }
