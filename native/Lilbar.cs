@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -559,9 +560,10 @@ namespace Lilbar
     // One dock per monitor, in the strip that monitor's taskbar used. Tiles come from Config.Items, in order.
     partial class Dock : Form
     {
-        class Hit { public Rectangle R; public Action<MouseButtons> Down, Up; public Action<int> Wheel; public string Tip; public bool Right; }
-        class Seg { public int W; public Action<Graphics, Rectangle> Draw; }
-        class AppItem { public string Title; public Bitmap Icon; public bool Running, Active; public Action Click; }
+        class Hit { public Rectangle R; public Action<MouseButtons> Down, Up; public Action<int> Wheel; public string Tip; public bool Right; public AppItem App; }
+        class Seg { public int W; public string Id; public Action<Graphics, Rectangle> Draw; }
+        class AppItem { public string Title, Pin; public Bitmap Icon; public bool Running, Active; public Action Click; public List<Win> Wins; public string Key { get { return Pin ?? (Wins.Count > 0 ? Wins[0].Hwnd.ToString() : Title); } } }
+        class Slot { public Rectangle R; public string Id; }
 
         static readonly int TaskbarCreatedMsg = N.RegisterWindowMessage("TaskbarCreated");
         readonly Screen screen;
@@ -573,6 +575,18 @@ namespace Lilbar
         bool reserved;
         Form popup;
         string popupKey, justClosed;
+        // Drag to reorder: whole tiles, or pinned apps inside the apps tile.
+        readonly List<Slot> segSlots = new List<Slot>(), pinSlots = new List<Slot>();
+        Slot dragFrom;
+        bool dragPin, dragging;
+        Point downAt;
+        int dragX, grabDx;
+        Bitmap ghost;
+        // Window previews on app hover.
+        PreviewPopup preview;
+        readonly System.Windows.Forms.Timer hoverClock = new System.Windows.Forms.Timer { Interval = 60 };
+        string hoverKey;
+        long hoverSince, outsideSince;
 
         static int S(float v) { return Glass.S(v); }
 
@@ -590,6 +604,7 @@ namespace Lilbar
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.Opaque, true);
             tip.ShowAlways = true;
             Bounds = new Rectangle(s.Bounds.X, s.Bounds.Bottom - H, S(48), H);
+            hoverClock.Tick += delegate { HoverTick(); };
         }
 
         public bool IsPrimary { get { return primary; } }
@@ -626,6 +641,8 @@ namespace Lilbar
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             ClosePopup();
+            ClosePreview();
+            hoverClock.Dispose();
             if (reserved) Taskbar.Unreserve(Handle);
             reserved = false;
             if (!Manager.Rebuilding) Manager.Quit(this); // closed from outside (taskkill, logoff): quit cleanly
@@ -635,7 +652,7 @@ namespace Lilbar
         bool AddHit(Rectangle r, Action<MouseButtons> down, Action<MouseButtons> up, string tipText, bool right, Action<int> wheel = null)
         {
             hits.Add(new Hit { R = r, Down = down, Up = up, Tip = tipText, Right = right, Wheel = wheel });
-            return hits.Count - 1 == hover;
+            return hits.Count - 1 == hover && !dragging;
         }
 
         Rectangle ToScreen(Rectangle r) { return new Rectangle(Left + r.X, Top + r.Y, r.Width, r.Height); }
@@ -648,7 +665,7 @@ namespace Lilbar
             {
                 if (!it.On) continue;
                 Seg sg = Build(it.Id, th, slot);
-                if (sg != null) segs.Add(sg);
+                if (sg != null) { sg.Id = it.Id; segs.Add(sg); }
             }
             // shortcut: tiles that don't fit the screen width are dropped from the right; a second row would be the upgrade
             int room = screen.Bounds.Width - S(8), used = S(8) - S(6);
@@ -672,12 +689,59 @@ namespace Lilbar
             if (Left != x0 || Top != sb.Bottom - H || Width != W || Height != H) SetBounds(x0, sb.Bottom - H, W, H);
 
             hits.Clear();
+            segSlots.Clear();
+            pinSlots.Clear();
             using (Graphics g = Glass.Begin(buf))
             {
+                Glass.Shell(g, new Rectangle(1, 1, W - 2, H - 2));
                 int x = pad;
-                foreach (Seg sg in segs) { sg.Draw(g, new Rectangle(x, (H - th) / 2, sg.W, th)); x += sg.W + gap; }
+                foreach (Seg sg in segs)
+                {
+                    var r = new Rectangle(x, (H - th) / 2, sg.W, th);
+                    if (sg.Id != null) segSlots.Add(new Slot { R = r, Id = sg.Id });
+                    if (dragging && !dragPin && sg.Id == dragFrom.Id) EmptySlot(g, r, S(9)); // it rides under the cursor instead
+                    else sg.Draw(g, r);
+                    x += sg.W + gap;
+                }
+                if (dragging) DrawDrag(g);
             }
             Invalidate();
+        }
+
+        static void EmptySlot(Graphics g, Rectangle r, int rad)
+        {
+            using (GraphicsPath p = Glass.Round(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), rad))
+            using (var pen = new Pen(Color.FromArgb(70, 255, 255, 255), 1f) { DashStyle = DashStyle.Dash }) g.DrawPath(pen, p);
+        }
+
+        // Where the dragged item would land: before the first other slot whose centre is right of the cursor.
+        int DropIndex(List<Slot> slots)
+        {
+            int i = 0;
+            foreach (Slot s in slots)
+            {
+                if (s.Id == dragFrom.Id) continue;
+                if (dragX < s.R.X + s.R.Width / 2) return i;
+                i++;
+            }
+            return i;
+        }
+
+        void DrawDrag(Graphics g)
+        {
+            List<Slot> slots = dragPin ? pinSlots : segSlots;
+            List<Slot> others = slots.FindAll(s => s.Id != dragFrom.Id);
+            int at = DropIndex(slots), d = S(dragPin ? 2 : 3);
+            Rectangle edge = others.Count == 0 ? dragFrom.R : at < others.Count ? others[at].R : others[others.Count - 1].R;
+            int gapX = others.Count == 0 ? dragFrom.R.X : at < others.Count ? edge.X - d : edge.Right + d;
+            Glass.Fill(g, new Rectangle(gapX - S(1), edge.Y + S(2), S(3), edge.Height - S(4)), S(1), Glass.Blue);
+            if (ghost == null) return;
+            int gx = Math.Max(0, Math.Min(buf.Width - ghost.Width, dragX - grabDx));
+            using (var ia = new ImageAttributes())
+            {
+                ia.SetColorMatrix(new ColorMatrix { Matrix33 = 0.92f });
+                g.DrawImage(ghost, new Rectangle(gx, dragFrom.R.Y - S(1), ghost.Width, ghost.Height), 0, 0, ghost.Width, ghost.Height, GraphicsUnit.Pixel, ia);
+            }
         }
 
         List<AppItem> Items()
@@ -692,7 +756,7 @@ namespace Lilbar
                 string lnk = p.Lnk;
                 list.Add(new AppItem
                 {
-                    Title = p.Name, Icon = Sys.IconOf(exe.Length > 0 ? exe : lnk, AppIcon), Running = mine.Count > 0, Active = mine.Exists(w => w.Active),
+                    Title = p.Name, Pin = p.Name, Wins = mine, Icon = Sys.IconOf(exe.Length > 0 ? exe : lnk, AppIcon), Running = mine.Count > 0, Active = mine.Exists(w => w.Active),
                     Click = mine.Count > 0 ? (Action)(() => Sys.Activate(mine[0].Hwnd)) : () => Sys.Launch(lnk)
                 });
             }
@@ -700,7 +764,7 @@ namespace Lilbar
             {
                 if (used.Contains(w.Hwnd)) continue;
                 IntPtr h = w.Hwnd;
-                list.Add(new AppItem { Title = w.Title, Icon = Sys.IconOf(w.Exe, AppIcon), Running = true, Active = w.Active, Click = () => Sys.Activate(h) });
+                list.Add(new AppItem { Title = w.Title, Wins = new List<Win> { w }, Icon = Sys.IconOf(w.Exe, AppIcon), Running = true, Active = w.Active, Click = () => Sys.Activate(h) });
             }
             return list;
         }
@@ -723,13 +787,16 @@ namespace Lilbar
                     {
                         var c = new Rectangle(ax, sy, slot, slot);
                         AppItem item = it;
-                        bool hov = AddHit(c, null, b => item.Click(), item.Title, false);
+                        ax += slot + S(4);
+                        if (item.Pin != null) pinSlots.Add(new Slot { R = c, Id = item.Pin });
+                        bool hov = AddHit(c, null, b => item.Click(), null, false);
+                        hits[hits.Count - 1].App = item;
+                        if (dragging && dragPin && item.Pin == dragFrom.Id) { EmptySlot(g, c, S(8)); continue; }
                         if (item.Active || hov) Glass.Fill(g, c, S(8), Color.FromArgb(item.Active ? 56 : 36, 255, 255, 255));
                         if (item.Icon != null) g.DrawImage(item.Icon, new Rectangle(c.X + (slot - icon) / 2, c.Y + (slot - icon) / 2 - S(1), icon, icon));
                         else Glass.Center(g, item.Title.Substring(0, 1), Glass.Value, Color.White, c);
                         if (item.Running)
                             using (var dot = new SolidBrush(Glass.Blue)) g.FillEllipse(dot, c.X + c.Width / 2 - S(2), c.Bottom - S(4), S(4), S(4));
-                        ax += slot + S(4);
                     }
                 }
             };
@@ -752,7 +819,7 @@ namespace Lilbar
                         foreach (string p in apps)
                         {
                             string path = p;
-                            items.Add(new PopItem { Icon = Sys.IconOf(path, S(24)), Tip = Path.GetFileNameWithoutExtension(path), Up = bb => { ClosePopup(); Sys.Launch(path); } });
+                            items.Add(new PopItem { Icon = Sys.IconOf(path, S(32)), Text = Path.GetFileNameWithoutExtension(path), Tip = Path.GetFileNameWithoutExtension(path), Up = bb => { ClosePopup(); Sys.Launch(path); } });
                         }
                         TogglePopup("folder", name, items, true, ToScreen(r));
                     }, apps.Count == 0 ? name + ": bấm để chọn app" : name, false);
@@ -977,10 +1044,12 @@ namespace Lilbar
 
         void ShowMenu()
         {
+            bool auto = Startup.On;
             var items = new List<PopItem>
             {
-                new PopItem { Glyph = "⚙", Text = "Cài đặt Lilbar", Up = b => { ClosePopup(); Manager.OpenSettings(0); } },
-                new PopItem { Glyph = "✕", Text = "Thoát Lilbar", Up = b => { ClosePopup(); Manager.Quit(null); } },
+                new PopItem { Glyph = "", Text = "Cài đặt Lilbar", Up = b => { ClosePopup(); Manager.OpenSettings(0); } },
+                new PopItem { Glyph = auto ? "" : "", Text = "Khởi động cùng Windows", Up = b => { ClosePopup(); Startup.Set(!auto); } },
+                new PopItem { Glyph = "", Text = "Thoát Lilbar", Separator = true, Up = b => { ClosePopup(); Manager.Quit(null); } },
             };
             N.POINT p;
             N.GetCursorPos(out p);
@@ -1025,10 +1094,16 @@ namespace Lilbar
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            if (dragFrom != null && e.Button == MouseButtons.Left)
+            {
+                if (!dragging && Math.Abs(e.X - downAt.X) > S(6)) StartDrag();
+                if (dragging) { dragX = e.X; Redraw(); return; }
+            }
             int h = hits.FindIndex(x => x.R.Contains(e.Location));
+            if (h >= 0 && hits[h].App != null) { tip.Hide(this); hoverClock.Start(); }
             if (h == hover) return;
             hover = h;
-            if (h >= 0 && !string.IsNullOrEmpty(hits[h].Tip)) tip.Show(hits[h].Tip, this, hits[h].R.X, -S(30) - S(16) * hits[h].Tip.Split('\n').Length, 4000);
+            if (h >= 0 && hits[h].App == null && !string.IsNullOrEmpty(hits[h].Tip)) tip.Show(hits[h].Tip, this, hits[h].R.X, -S(30) - S(16) * hits[h].Tip.Split('\n').Length, 4000);
             else tip.Hide(this);
             Redraw();
         }
@@ -1041,16 +1116,114 @@ namespace Lilbar
             Redraw();
         }
 
+        // Previews follow the pointer like the Windows taskbar: open after a short rest on an app, switch at once
+        // between apps while one is open, close a moment after the pointer leaves both the app and the preview.
+        void HoverTick()
+        {
+            long now = Environment.TickCount;
+            Point p = PointToClient(Cursor.Position);
+            Hit h = dragging || popup != null ? null : hits.Find(x => x.App != null && x.R.Contains(p));
+            if (h != null)
+            {
+                outsideSince = 0;
+                string key = h.App.Key;
+                if (preview != null && hoverKey == key) return;
+                if (hoverKey != key) { hoverKey = key; hoverSince = now; }
+                if (preview != null || now - hoverSince >= 400) ShowPreview(h);
+                return;
+            }
+            if (preview != null && preview.Bounds.Contains(Cursor.Position)) { outsideSince = 0; return; }
+            hoverKey = null;
+            if (outsideSince == 0) outsideSince = now;
+            if (preview == null || now - outsideSince >= 250) { ClosePreview(); hoverClock.Stop(); outsideSince = 0; }
+        }
+
+        void ShowPreview(Hit h)
+        {
+            ClosePreview();
+            AppItem app = h.App;
+            PreviewPopup p = new PreviewPopup(app.Title, app.Icon, app.Wins, ToScreen(h.R));
+            preview = p;
+            p.FormClosed += delegate { if (preview == p) preview = null; };
+            p.Show();
+        }
+
+        void ClosePreview()
+        {
+            if (preview == null) return;
+            PreviewPopup p = preview;
+            preview = null;
+            if (!p.IsDisposed) p.Close();
+        }
+
+        void StartDrag()
+        {
+            dragging = true;
+            ClosePreview();
+            tip.Hide(this);
+            if (ghost != null) ghost.Dispose();
+            Rectangle r = dragFrom.R;
+            ghost = buf.Clone(new Rectangle(r.X, r.Y, Math.Min(r.Width, buf.Width - r.X), Math.Min(r.Height, buf.Height - r.Y)), PixelFormat.Format32bppPArgb);
+            grabDx = downAt.X - r.X;
+        }
+
+        // Drop: tiles reorder Config.Items, pinned apps reorder PinOrder (hidden pins keep their place).
+        void Drop()
+        {
+            List<Slot> slots = dragPin ? pinSlots : segSlots;
+            List<Slot> others = slots.FindAll(s => s.Id != dragFrom.Id);
+            int at = DropIndex(slots);
+            string before = at < others.Count ? others[at].Id : null, after = others.Count > 0 ? others[others.Count - 1].Id : null;
+            if (dragPin)
+            {
+                List<string> order = Model.OrderedPins(true).ConvertAll(p => p.Name);
+                order.Remove(dragFrom.Id);
+                int i = before != null ? order.IndexOf(before) : after != null ? order.IndexOf(after) + 1 : order.Count;
+                order.Insert(Math.Max(0, i), dragFrom.Id);
+                Config.Current.PinOrder = order;
+            }
+            else
+            {
+                List<ItemCfg> items = Config.Current.Items;
+                ItemCfg src = items.Find(x => x.Id == dragFrom.Id);
+                if (src == null) return;
+                items.Remove(src);
+                int i = before != null ? items.FindIndex(x => x.Id == before) : after != null ? items.FindIndex(x => x.Id == after) + 1 : items.Count;
+                items.Insert(Math.Max(0, i), src);
+            }
+            Config.Apply();
+        }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             // The dock never takes focus, so an open popup doesn't notice this click by itself.
             if (popup != null) { justClosed = popupKey; ClosePopup(); }
+            ClosePreview();
             Hit h = HitAt(e.Location);
+            dragFrom = null;
+            if (e.Button == MouseButtons.Left && (h == null || h.Down == null)) // tray icons forward presses to their apps, so they don't drag
+            {
+                downAt = e.Location;
+                dragX = e.X;
+                Slot pin = pinSlots.Find(s => s.R.Contains(e.Location));
+                dragPin = pin != null;
+                dragFrom = pin ?? segSlots.Find(s => s.R.Contains(e.Location));
+            }
             if (h != null && h.Down != null && (e.Button == MouseButtons.Left || h.Right)) h.Down(e.Button);
         }
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
+            if (dragging)
+            {
+                dragging = false;
+                Drop();
+                dragFrom = null;
+                if (ghost != null) { ghost.Dispose(); ghost = null; }
+                Redraw();
+                return;
+            }
+            dragFrom = null;
             Hit h = HitAt(e.Location);
             if (h != null && h.Up != null && (e.Button == MouseButtons.Left || h.Right)) h.Up(e.Button);
             else if (e.Button == MouseButtons.Right) ShowMenu();
@@ -1193,6 +1366,26 @@ namespace Lilbar
         }
     }
 
+    // Start with Windows through the per-user Run key (no admin, removable from Task Manager's Startup apps too).
+    static class Startup
+    {
+        const string Key = @"Software\Microsoft\Windows\CurrentVersion\Run";
+
+        public static bool On
+        {
+            get { using (RegistryKey k = Registry.CurrentUser.OpenSubKey(Key)) return k != null && k.GetValue("Lilbar") != null; }
+        }
+
+        public static void Set(bool on)
+        {
+            using (RegistryKey k = Registry.CurrentUser.CreateSubKey(Key))
+            {
+                if (on) k.SetValue("Lilbar", "\"" + Application.ExecutablePath + "\" --startup");
+                else k.DeleteValue("Lilbar", false);
+            }
+        }
+    }
+
     static class Program
     {
         [STAThread]
@@ -1201,6 +1394,13 @@ namespace Lilbar
             string arg = args.Length > 0 ? args[0] : "";
             if (arg == "--restore") { Taskbar.Restore(); TrayHost.BroadcastTaskbarCreated(); return 0; }
             if (arg == "--selftest") return SelfTest();
+            if (arg == "--startup")
+            {
+                // At sign-in explorer may not have built its taskbar yet; our tray host must not claim Shell_TrayWnd first.
+                var wait = Stopwatch.StartNew();
+                while (Taskbar.Primary() == IntPtr.Zero && wait.Elapsed.TotalSeconds < 60) Thread.Sleep(500);
+                Thread.Sleep(2000);
+            }
 
             bool fresh;
             using (var mutex = new Mutex(true, "Lilbar.Dock", out fresh))
@@ -1315,6 +1515,8 @@ namespace Lilbar
             check(Net.Down >= 0 && Net.History.Count == 1, "network sample " + Net.Fmt(Net.Down));
             try { Media.Poll(); check(true, "media session: " + (Media.Has ? Media.Title : "none playing")); }
             catch (Exception e) { check(false, "media " + e.Message); }
+            try { Quick.Poll(); check(true, "hotspot " + Quick.Hotspot + ", airplane " + Quick.Airplane + " (-1 = not available)"); }
+            catch (Exception e) { check(false, "quick toggles: " + e.Message); }
             try { Radios.Poll(); check(true, "radios: " + string.Join(", ", Radios.List.ConvertAll(x => (x.WiFi ? "Wi-Fi " : "Bluetooth ") + (x.On ? "on" : "off")).ToArray())); }
             catch (Exception e) { check(false, "radios " + e.Message); }
             return fails;

@@ -54,7 +54,7 @@ namespace Lilbar
             new CatalogItem("cpu", Sys, "CPU", null, false),
             new CatalogItem("ram", Sys, "RAM", null, false),
             new CatalogItem("temp", Sys, "Nhiệt độ", "Cảm biến bo mạch, không phải nhiệt độ lõi CPU", false),
-            new CatalogItem("toggles", Sys, "Wi-Fi / Bluetooth", "Bật tắt nhanh", false),
+            new CatalogItem("toggles", Sys, "Bật tắt nhanh", "Wi-Fi, Bluetooth, điểm phát sóng, máy bay, pin", true),
             new CatalogItem("language", Sys, "Bàn phím", "Bố cục bàn phím đang dùng; bấm để đổi", false),
             new CatalogItem("theme", Sys, "Sáng / tối", "Đổi chế độ màu của Windows", false),
             new CatalogItem("storage", Sys, "Ổ đĩa", "Dung lượng trống ổ C", false),

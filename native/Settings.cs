@@ -13,12 +13,18 @@ namespace Lilbar
     class SettingsForm : Form
     {
         class Hot { public Rectangle R; public Action Click; public bool Nav; }
+        // A row that can be dragged within its list; Move(from, to) gets indices in the list without the dragged row.
+        class Row { public Rectangle R; public string List, Label, Sub; public Bitmap Icon; public int Index; public Action<int, int> Move; }
 
         static SettingsForm current;
         static readonly string[] Tabs = { "Thanh", "Ứng dụng", "Khay hệ thống", "Thư mục", "Tiện ích", "Tài khoản" };
         static readonly Color Bg = Color.FromArgb(255, 17, 17, 21), NavBg = Color.FromArgb(255, 23, 23, 29),
             CardBg = Color.FromArgb(255, 33, 33, 41), Edge = Color.FromArgb(255, 52, 52, 62), BoxBg = Color.FromArgb(255, 44, 44, 54);
         readonly List<Hot> hots = new List<Hot>();
+        readonly List<Row> rows = new List<Row>();
+        Row pressed, dragged;
+        Point downAt;
+        int dragY;
         readonly TextBox nameBox = new TextBox(), tokenBox = new TextBox();
         readonly int navW;
         int tab, scroll, contentH;
@@ -104,6 +110,7 @@ namespace Lilbar
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
             hots.Clear();
+            rows.Clear();
 
             using (var b = new SolidBrush(NavBg)) g.FillRectangle(b, 0, 0, navW, ClientSize.Height);
             Glass.Text(g, "Lilbar", Glass.Title, Color.White, new Rectangle(S(20), S(18), navW - S(30), S(30)), StringAlignment.Near);
@@ -130,6 +137,7 @@ namespace Lilbar
                 case 5: PaintAccounts(g, x, w, ref y); break;
             }
             contentH = y + scroll + S(20);
+            if (dragged != null) PaintDrag(g, x, w);
             g.ResetClip();
             if (nameBox.Visible != showName) nameBox.Visible = showName;
             if (tokenBox.Visible != showToken) tokenBox.Visible = showToken;
@@ -196,10 +204,58 @@ namespace Lilbar
             return r.X - S(6);
         }
 
-        static void Swap<T>(List<T> l, int a, int b)
+        static void MoveIn<T>(List<T> l, int from, int to)
         {
-            T t = l[a]; l[a] = l[b]; l[b] = t;
+            T t = l[from];
+            l.RemoveAt(from);
+            l.Insert(Math.Max(0, Math.Min(l.Count, to)), t);
             Config.Apply();
+        }
+
+        // A card that can be dragged up or down within its list (a grip on the left shows it).
+        Rectangle DragCard(Graphics g, int x, int w, ref int y, string list, int index, Bitmap icon, string label, string sub, Action<int, int> move)
+        {
+            bool isDragged = dragged != null && dragged.List == list && dragged.Index == index;
+            Rectangle r;
+            if (isDragged)
+            {
+                r = new Rectangle(x, y, w, S(48));
+                using (GraphicsPath p = Glass.Round(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), S(10)))
+                using (var pen = new Pen(Color.FromArgb(90, 255, 255, 255)) { DashStyle = DashStyle.Dash }) g.DrawPath(pen, p);
+                y += S(54);
+            }
+            else r = Card(g, x + S(18), w - S(18), ref y, icon, label, sub);
+            if (!isDragged) Glass.Center(g, "", Glass.MdlSmall, Color.FromArgb(110, 255, 255, 255), new Rectangle(x, r.Y, S(18), r.Height)); // grip
+            rows.Add(new Row { R = new Rectangle(x, r.Y, w, r.Height), List = list, Label = label, Sub = sub, Icon = icon, Index = index, Move = move });
+            return r;
+        }
+
+        // Insertion point: before the first other row of the list whose centre is below the pointer.
+        int DropAt(List<Row> list)
+        {
+            int i = 0;
+            foreach (Row r in list)
+            {
+                if (r.Index == dragged.Index) continue;
+                if (dragY < r.R.Y + r.R.Height / 2) return i;
+                i++;
+            }
+            return i;
+        }
+
+        void PaintDrag(Graphics g, int x, int w)
+        {
+            List<Row> list = rows.FindAll(q => q.List == dragged.List && q.Index != dragged.Index);
+            int at = DropAt(rows.FindAll(q => q.List == dragged.List));
+            if (list.Count > 0)
+            {
+                int ly = at < list.Count ? list[at].R.Y - S(4) : list[list.Count - 1].R.Bottom + S(2);
+                Glass.Fill(g, new Rectangle(x, ly - S(1), w, S(3)), S(1), Glass.Blue);
+            }
+            int cy = dragY - S(24), y = cy;
+            Rectangle r = Card(g, x + S(18), w - S(18), ref y, dragged.Icon, dragged.Label, dragged.Sub);
+            using (GraphicsPath p = Glass.Round(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), S(10)))
+            using (var pen = new Pen(Glass.Blue, 1.5f)) g.DrawPath(pen, p);
         }
 
         void PaintBar(Graphics g, int x, int w, ref int y)
@@ -209,26 +265,38 @@ namespace Lilbar
             int right = row.Right - S(12);
             right = Segment(g, row, right, "Trái", Config.Current.Align == "left", () => { Config.Current.Align = "left"; Config.Apply(); });
             Segment(g, row, right, "Giữa", Config.Current.Align != "left", () => { Config.Current.Align = "center"; Config.Apply(); });
+            bool auto = Startup.On;
+            row = Card(g, x, w, ref y, null, "Khởi động cùng Windows", "Mở Lilbar khi đăng nhập");
+            Toggle(g, row, row.Right - S(12), auto, () => Startup.Set(!auto));
 
             Header(g, "ĐANG DÙNG, TỪ TRÁI SANG PHẢI", x, w, ref y);
             Note(g, "Quá nhiều ô thì các ô cuối sẽ không vừa màn hình và bị ẩn.", x, w, ref y);
             List<ItemCfg> items = Config.Current.Items;
             List<int> on = new List<int>();
             for (int i = 0; i < items.Count; i++) if (items[i].On) on.Add(i);
+            Note(g, "Kéo thả để đổi thứ tự (hoặc kéo thẳng các ô trên thanh).", x, w, ref y);
+            Action<int, int> moveOn = (from, to) =>
+            {
+                List<ItemCfg> active = items.FindAll(i => i.On);
+                ItemCfg m = active[from];
+                active.RemoveAt(from);
+                active.Insert(Math.Max(0, Math.Min(active.Count, to)), m);
+                List<ItemCfg> off = items.FindAll(i => !i.On);
+                items.Clear();
+                items.AddRange(active);
+                items.AddRange(off);
+                Config.Apply();
+            };
             for (int k = 0; k < on.Count; k++)
             {
                 ItemCfg it = items[on[k]];
                 CatalogItem c = Catalog.Get(it.Id);
-                int a = on[k], prev = k > 0 ? on[k - 1] : -1, next = k < on.Count - 1 ? on[k + 1] : -1;
-                row = Card(g, x, w, ref y, null, c.Name, c.Group + (c.Sub != null ? " · " + c.Sub : ""));
-                right = row.Right - S(12);
-                right = Toggle(g, row, right, true, () => { it.On = false; Config.Apply(); });
-                right = Button(g, row, right, "▼", next >= 0, () => Swap(items, a, next));
-                Button(g, row, right, "▲", prev >= 0, () => Swap(items, a, prev));
+                row = DragCard(g, x, w, ref y, "bar", k, null, c.Name, c.Group + (c.Sub != null ? " · " + c.Sub : ""), moveOn);
+                Toggle(g, row, row.Right - S(12), true, () => { it.On = false; Config.Apply(); });
             }
 
             Header(g, "THƯ VIỆN WIDGET", x, w, ref y);
-            Note(g, "Bật một widget để thêm vào cuối thanh, rồi kéo lên bằng nút ▲ ở trên.", x, w, ref y);
+            Note(g, "Bật một widget để thêm vào cuối thanh, rồi kéo nó tới chỗ muốn đặt.", x, w, ref y);
             foreach (string group in Catalog.Groups)
             {
                 List<ItemCfg> lib = items.FindAll(i => !i.On && Catalog.Get(i.Id).Group == group);
@@ -276,25 +344,20 @@ namespace Lilbar
                 Pin p = pins[i];
                 int idx = i;
                 bool shown = !Config.Current.PinHidden.Contains(p.Name);
-                Rectangle row = Card(g, x, w, ref y, Sys.IconOf(p.Exe.Length > 0 ? p.Exe : p.Lnk, S(20)), p.Name, null);
-                int right = row.Right - S(12);
-                right = Toggle(g, row, right, shown, () =>
+                Rectangle row = DragCard(g, x, w, ref y, "pins", idx, Sys.IconOf(p.Exe.Length > 0 ? p.Exe : p.Lnk, S(20)), p.Name, null, (from, to) =>
+                {
+                    List<string> order = pins.ConvertAll(pp => pp.Name);
+                    Config.Current.PinOrder = order;
+                    MoveIn(order, from, to);
+                });
+                Toggle(g, row, row.Right - S(12), shown, () =>
                 {
                     if (shown) Config.Current.PinHidden.Add(p.Name); else Config.Current.PinHidden.Remove(p.Name);
                     Config.Apply();
                 });
-                right = Button(g, row, right, "▼", idx < pins.Count - 1, () => MovePin(pins, idx, 1));
-                Button(g, row, right, "▲", idx > 0, () => MovePin(pins, idx, -1));
             }
             if (pins.Count == 0) Note(g, "Chưa có app ghim nào.", x, w, ref y);
-        }
-
-        static void MovePin(List<Pin> pins, int i, int d)
-        {
-            List<string> order = pins.ConvertAll(p => p.Name);
-            string t = order[i]; order[i] = order[i + d]; order[i + d] = t;
-            Config.Current.PinOrder = order;
-            Config.Apply();
+            else Note(g, "Kéo thả để đổi thứ tự.", x, w, ref y);
         }
 
         static List<string> WindowsPinned()
@@ -358,11 +421,8 @@ namespace Lilbar
             {
                 string path = apps[i];
                 int idx = i;
-                row = Card(g, x, w, ref y, Sys.IconOf(path, S(20)), Path.GetFileNameWithoutExtension(path), path);
-                int right = row.Right - S(12);
-                right = Button(g, row, right, "✕", true, () => { apps.RemoveAt(idx); Config.Apply(); });
-                right = Button(g, row, right, "▼", idx < apps.Count - 1, () => Swap(apps, idx, idx + 1));
-                Button(g, row, right, "▲", idx > 0, () => Swap(apps, idx, idx - 1));
+                row = DragCard(g, x, w, ref y, "folder", idx, Sys.IconOf(path, S(20)), Path.GetFileNameWithoutExtension(path), path, (from, to) => MoveIn(apps, from, to));
+                Button(g, row, row.Right - S(12), "✕", true, () => { apps.RemoveAt(idx); Config.Apply(); });
             }
             var add = new Rectangle(x, y, w, S(44));
             Glass.Fill(g, add, S(10), Color.FromArgb(255, 38, 72, 124));
@@ -463,9 +523,42 @@ namespace Lilbar
             }
         }
 
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            pressed = null;
+            if (e.Button != MouseButtons.Left || e.X < navW) return;
+            if (hots.Exists(h => !h.Nav && h.R.Contains(e.Location))) return; // a switch or button, not a drag
+            pressed = rows.Find(r => r.R.Contains(e.Location));
+            downAt = e.Location;
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (pressed == null || e.Button != MouseButtons.Left) return;
+            if (dragged == null && Math.Abs(e.Y - downAt.Y) < S(5)) return;
+            dragged = pressed;
+            dragY = e.Y;
+            Cursor = Cursors.SizeNS;
+            Invalidate();
+        }
+
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+            if (dragged != null)
+            {
+                Row d = dragged;
+                int to = DropAt(rows.FindAll(r => r.List == d.List));
+                dragged = null;
+                pressed = null;
+                Cursor = Cursors.Default;
+                if (to != d.Index) d.Move(d.Index, to);
+                Invalidate();
+                return;
+            }
+            pressed = null;
             if (e.Button != MouseButtons.Left) return;
             foreach (Hot h in hots.ToArray())
                 if (h.R.Contains(e.Location) && (h.Nav ? e.X < navW : e.X >= navW)) { h.Click(); Invalidate(); return; }

@@ -14,7 +14,7 @@ namespace Lilbar
         public static float Scale = 1;
         public static readonly Color Blue = Color.FromArgb(255, 74, 155, 255);
         public static readonly Color Dim = Color.FromArgb(225, 255, 255, 255);
-        public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge;
+        public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge, Menu, MenuIcon, Fluent;
         static readonly Bitmap measureBmp = new Bitmap(1, 1);
 
         public static int S(float v) { return (int)Math.Round(v * Scale); }
@@ -48,6 +48,9 @@ namespace Lilbar
             Strike = F(text, 12.5f, FontStyle.Strikeout);
             GlyphBig = F("Segoe UI Symbol", 19, FontStyle.Regular);
             Huge = F(disp, 22, FontStyle.Bold);
+            Menu = F(semi, 14, FontStyle.Regular);
+            MenuIcon = F("Segoe MDL2 Assets", 15, FontStyle.Regular);
+            Fluent = F(Has("Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets", 20, FontStyle.Regular); // Windows 11's own Quick Settings icons
         }
 
         static bool Has(string family)
@@ -123,10 +126,39 @@ namespace Lilbar
             using (var b = new SolidBrush(c)) g.FillPath(b, p);
         }
 
-        public static void Tile(Graphics g, Rectangle r) { Pane(g, r, S(10), 64); }
+        // Tiles inside the dock's shell: almost nothing but a hairline, so the glass stays clear.
+        public static void Tile(Graphics g, Rectangle r)
+        {
+            var edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
+            using (GraphicsPath p = Round(edge, S(9)))
+            {
+                using (var b = new LinearGradientBrush(r, Color.FromArgb(30, 255, 255, 255), Color.FromArgb(8, 255, 255, 255), 90f)) g.FillPath(b, p);
+                using (var b = new LinearGradientBrush(r, Color.FromArgb(78, 255, 255, 255), Color.FromArgb(30, 255, 255, 255), 90f))
+                using (var pen = new Pen(b, 1f)) g.DrawPath(pen, p);
+            }
+        }
+
+        // The dock's outer box: one clear pane the height of the taskbar, a hairline rim and a faint dark underlay
+        // that keeps text readable over bright wallpapers. No blur (that would be acrylic).
+        public static void Shell(Graphics g, Rectangle r) { Pane(g, r, S(13), 52); }
 
         // Popups sit over arbitrary content, so their pane is darker for legibility.
-        public static void Panel(Graphics g, Rectangle r) { Pane(g, r, S(14), 236); }
+        public static void Panel(Graphics g, Rectangle r) { Pane(g, r, S(16), 236); }
+
+        // Soft drop shadow outside r (callers leave a ShadowMargin around their panel).
+        public static int ShadowMargin { get { return S(16); } }
+
+        public static void Shadow(Graphics g, Rectangle r, int rad)
+        {
+            int m = ShadowMargin;
+            for (int i = 1; i <= m; i++)
+            {
+                float k = 1 - (float)i / (m + 1);
+                var rr = new Rectangle(r.X - i, r.Y - i + S(4), r.Width + 2 * i - 1, r.Height + 2 * i - 1);
+                using (GraphicsPath p = Round(rr, rad + i))
+                using (var pen = new Pen(Color.FromArgb((int)(34 * k * k), 0, 0, 0), 1f)) g.DrawPath(pen, p);
+            }
+        }
 
         // Clear glass: a thin dark underlay for legibility, a white frost that fades downwards, a bright rim where
         // light catches the top edge, and a soft dark outline that keeps the pane apart from busy wallpapers. No blur.
@@ -137,7 +169,7 @@ namespace Lilbar
             {
                 using (var b = new SolidBrush(Color.FromArgb(dark, 12, 14, 20))) g.FillPath(b, p);
                 using (var b = new LinearGradientBrush(r, Color.FromArgb(44, 255, 255, 255), Color.FromArgb(14, 255, 255, 255), 90f)) g.FillPath(b, p);
-                using (var b = new LinearGradientBrush(r, Color.FromArgb(160, 255, 255, 255), Color.FromArgb(40, 255, 255, 255), 90f))
+                using (var b = new LinearGradientBrush(r, Color.FromArgb(120, 255, 255, 255), Color.FromArgb(34, 255, 255, 255), 90f))
                 using (var pen = new Pen(b, 1f)) g.DrawPath(pen, p);
             }
             using (GraphicsPath o = Round(new Rectangle(r.X - 1, r.Y - 1, r.Width + 1, r.Height + 1), rad + 1))

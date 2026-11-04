@@ -52,6 +52,7 @@ namespace Lilbar
             {
                 Step(Config.Has("media"), Media.Poll);
                 if (n % 5 == 0) Step(Config.Has("toggles"), Radios.Poll);
+                if (n % 5 == 0) Step(Config.Has("toggles"), Quick.Poll);
                 if (n % 3 == 0) Step(Config.Has("temp"), Thermal.Poll);
                 Thread.Sleep(1000);
             }

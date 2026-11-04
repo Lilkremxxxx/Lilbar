@@ -120,25 +120,56 @@ namespace Lilbar
             };
         }
 
+        class Quickie { public string Glyph, Name, Text; public int State; public Action Click; public Color? Tint; }
+
+        // Quick toggles: Wi-Fi, Bluetooth, mobile hotspot, airplane mode and, on laptops, the battery.
+        // Each is a button almost as tall as the tile with a Fluent icon that fills most of it; blue when on.
         Seg TogglesSeg()
         {
-            List<Radios.R> list = Radios.List;
+            var list = new List<Quickie>();
+            foreach (Radios.R it in Radios.List)
+            {
+                Radios.R radio = it;
+                list.Add(new Quickie { Glyph = radio.WiFi ? "" : "", Name = radio.WiFi ? "Wi-Fi" : "Bluetooth", State = radio.On ? 1 : 0, Click = () => Radios.Toggle(radio) });
+            }
+            if (Quick.Hotspot >= 0) list.Add(new Quickie { Glyph = "", Name = "Điểm phát sóng", State = Quick.Hotspot, Click = Quick.ToggleHotspot });
+            if (Quick.Airplane >= 0) list.Add(new Quickie { Glyph = "", Name = "Chế độ máy bay", State = Quick.Airplane, Click = Quick.ToggleAirplane });
+            PowerStatus ps = SystemInformation.PowerStatus;
+            if ((ps.BatteryChargeStatus & (BatteryChargeStatus.NoSystemBattery | BatteryChargeStatus.Unknown)) == 0)
+            {
+                int pct = (int)Math.Round(ps.BatteryLifePercent * 100);
+                bool charging = ps.PowerLineStatus == PowerLineStatus.Online;
+                int level = Math.Max(0, Math.Min(10, (pct + 5) / 10));
+                list.Add(new Quickie
+                {
+                    Glyph = ((char)((charging ? 0xEBAB : 0xEBA0) + level)).ToString(), Name = "Pin", Text = pct + "%", State = -1,
+                    Tint = pct <= 20 && !charging ? Color.FromArgb(255, 255, 69, 58) : (Color?)null,
+                    Click = () => Sys.WinKey(0x41), // Win+A: Quick Settings
+                });
+            }
             if (list.Count == 0) return null;
-            int cell = S(32);
+            int btn = S(34), gap = S(4), w = S(3);
+            foreach (Quickie q in list) w += (q.Text != null ? btn + Glass.Measure(q.Text, Glass.Row) + S(4) : btn) + gap;
             return new Seg
             {
-                W = S(6) + list.Count * cell + S(2),
+                W = w - gap + S(3),
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);
-                    int x = r.X + S(5);
-                    foreach (Radios.R it in list)
+                    int x = r.X + S(3);
+                    foreach (Quickie q in list)
                     {
-                        Radios.R radio = it;
-                        var c = new Rectangle(x, r.Y + (r.Height - S(28)) / 2, S(28), S(28));
-                        RoundButton(g, c, radio.WiFi ? MdlWifi : MdlBluetooth, radio.On ? Glass.Blue : Color.FromArgb(50, 255, 255, 255),
-                            () => Radios.Toggle(radio), (radio.WiFi ? "Wi-Fi" : "Bluetooth") + ": " + (radio.On ? "đang bật" : "đang tắt") + "\nBấm để " + (radio.On ? "tắt" : "bật"));
-                        x += cell;
+                        Quickie it = q;
+                        int bw = it.Text != null ? btn + Glass.Measure(it.Text, Glass.Row) + S(4) : btn;
+                        var c = new Rectangle(x, r.Y + (r.Height - btn) / 2, bw, btn);
+                        string state = it.State == 1 ? "đang bật" : it.State == 2 ? "đang chuyển…" : "đang tắt";
+                        string tipText = it.State < 0 ? it.Name + " " + it.Text + "\nBấm để mở Cài đặt nhanh" : it.Name + ": " + state + "\nBấm để " + (it.State == 1 ? "tắt" : "bật");
+                        bool hov = AddHit(c, null, b => it.Click(), tipText, false);
+                        Color bg = it.State == 1 ? Glass.Blue : it.State == 2 ? Color.FromArgb(150, 74, 155, 255) : Color.FromArgb(hov ? 46 : 24, 255, 255, 255);
+                        Glass.Fill(g, c, S(9), bg);
+                        Glass.Center(g, it.Glyph, Glass.Fluent, it.Tint ?? Color.White, new Rectangle(c.X, c.Y, btn, btn));
+                        if (it.Text != null) Glass.Text(g, it.Text, Glass.Row, it.Tint ?? Color.White, new Rectangle(c.X + btn - S(4), c.Y, bw - btn + S(2), btn), StringAlignment.Near);
+                        x += bw + gap;
                     }
                 }
             };

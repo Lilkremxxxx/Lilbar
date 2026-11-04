@@ -9,6 +9,10 @@ A lightweight clear-glass dock that replaces the Windows 11 taskbar on every mon
 - CPU/RAM rings, Claude Code usage limits, battery, clock.
 - Now playing with controls, volume, network speed, board temperature, Wi-Fi and Bluetooth switches.
 - World clocks, a flip clock, a timer, pomodoro rounds, a todo list, and GitHub notifications with your contribution grid (personal access token, stored encrypted for your Windows user).
+- One clear box the height of the taskbar, with hairline tiles inside. Drag tiles or pinned apps on the dock (or rows in Settings) to reorder them.
+- Hover an app for live previews of its windows; click one to switch, ✕ to close it.
+- Quick toggles: Wi-Fi, Bluetooth, mobile hotspot, airplane mode and the battery on laptops.
+- Start with Windows from the right-click menu or Settings.
 - Right-click the dock for Settings: turn tiles on or off, reorder them, reorder or hide pinned apps, choose which tray icons are pinned, edit the folder.
 
 One small exe, one process, about 25 MB of working set (40 MB private) once it settles. No install, no dependencies. Settings live in `%APPDATA%\Lilbar\config.json`.
