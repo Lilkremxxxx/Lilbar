@@ -24,6 +24,12 @@ namespace Lilbar
             return hov;
         }
 
+        static string Clock(double s)
+        {
+            int t = (int)Math.Max(0, s);
+            return t >= 3600 ? (t / 3600) + ":" + (t / 60 % 60).ToString("00") + ":" + (t % 60).ToString("00") : (t / 60) + ":" + (t % 60).ToString("00");
+        }
+
         Seg MediaSeg()
         {
             if (!Media.Has) return null;
@@ -46,14 +52,21 @@ namespace Lilbar
                             g.Clip = old;
                         }
                     else { Glass.Fill(g, art, S(6), Color.FromArgb(50, 255, 255, 255)); Glass.Center(g, MdlMusic, Glass.MdlSmall, Color.White, art); }
-                    int bx = r.Right - S(4) - 3 * S(28), tx = art.Right + S(8);
+                    // Song title, and right under it a blue line for how far the song has played. Pause/play and next only.
+                    int bx = r.Right - S(4) - 2 * S(28), tx = art.Right + S(8);
                     AddHit(new Rectangle(art.X, r.Y, bx - art.X, r.Height), null, null, title + (artist.Length > 0 ? "\n" + artist : ""), false);
-                    Glass.Text(g, title, Glass.Row, Color.White, new Rectangle(tx, r.Y + S(3), bx - tx - S(4), S(17)), StringAlignment.Near);
-                    Glass.Text(g, artist, Glass.Date, Glass.Dim, new Rectangle(tx, r.Y + S(20), bx - tx - S(4), S(16)), StringAlignment.Near);
-                    int cy = r.Y + (r.Height - S(26)) / 2;
-                    RoundButton(g, new Rectangle(bx, cy, S(26), S(26)), MdlPrev, Color.FromArgb(0, 255, 255, 255), () => Media.Command(2), "Bài trước");
-                    RoundButton(g, new Rectangle(bx + S(28), cy, S(26), S(26)), playing ? MdlPause : MdlPlay, Color.FromArgb(70, 255, 255, 255), () => Media.Command(0), playing ? "Tạm dừng" : "Phát");
-                    RoundButton(g, new Rectangle(bx + S(56), cy, S(26), S(26)), MdlNext, Color.FromArgb(0, 255, 255, 255), () => Media.Command(1), "Bài sau");
+                    Glass.Text(g, title, Glass.Row, Color.White, new Rectangle(tx, r.Y + S(4), bx - tx - S(6), S(18)), StringAlignment.Near);
+                    double dur = Media.Dur, pos = Math.Min(dur, Media.Pos + (playing ? (DateTime.Now - Media.PosAt).TotalSeconds : 0));
+                    string times = dur > 0 ? Clock(pos) + " / " + Clock(dur) : "";
+                    int tw = times.Length > 0 ? Glass.Measure(times, Glass.Label) + S(4) : 0;
+                    var track = new Rectangle(tx, r.Y + S(27), bx - tx - S(8) - tw, S(3));
+                    Glass.Fill(g, track, S(1), Color.FromArgb(60, 255, 255, 255));
+                    double prog = Media.Progress();
+                    if (prog > 0) Glass.Fill(g, new Rectangle(track.X, track.Y, Math.Max(S(3), (int)(track.Width * prog)), track.Height), S(1), Glass.Blue);
+                    if (tw > 0) Glass.Text(g, times, Glass.Label, Glass.Dim, new Rectangle(track.Right + S(4), r.Y + S(21), tw, S(14)), StringAlignment.Near);
+                    int cy = r.Y + (r.Height - S(28)) / 2;
+                    RoundButton(g, new Rectangle(bx, cy, S(28), S(28)), playing ? MdlPause : MdlPlay, Color.FromArgb(70, 255, 255, 255), () => Media.Command(0), playing ? "Tạm dừng" : "Phát");
+                    RoundButton(g, new Rectangle(bx + S(28), cy, S(28), S(28)), MdlNext, Color.FromArgb(0, 255, 255, 255), () => Media.Command(1), "Bài sau");
                 }
             };
         }
@@ -147,7 +160,8 @@ namespace Lilbar
                     Click = () => Sys.WinKey(0x41), // Win+A: Quick Settings
                 });
             }
-            if (list.Count == 0) return null;
+            // One button for the whole Windows Quick Settings panel (Wi-Fi list, hotspot, airplane, cast, …).
+            list.Add(new Quickie { Glyph = "", Name = "Cài đặt nhanh", Text = null, State = -1, Click = () => Sys.WinKey(0x41) });
             int btn = S(34), gap = S(4), w = S(3);
             foreach (Quickie q in list) w += (q.Text != null ? btn + Glass.Measure(q.Text, Glass.Row) + S(4) : btn) + gap;
             return new Seg
@@ -163,7 +177,7 @@ namespace Lilbar
                         int bw = it.Text != null ? btn + Glass.Measure(it.Text, Glass.Row) + S(4) : btn;
                         var c = new Rectangle(x, r.Y + (r.Height - btn) / 2, bw, btn);
                         string state = it.State == 1 ? "đang bật" : it.State == 2 ? "đang chuyển…" : "đang tắt";
-                        string tipText = it.State < 0 ? it.Name + " " + it.Text + "\nBấm để mở Cài đặt nhanh" : it.Name + ": " + state + "\nBấm để " + (it.State == 1 ? "tắt" : "bật");
+                        string tipText = it.State < 0 ? it.Name + (it.Text != null ? " " + it.Text : "") + "\nBấm để mở Cài đặt nhanh của Windows" : it.Name + ": " + state + "\nBấm để " + (it.State == 1 ? "tắt" : "bật");
                         bool hov = AddHit(c, null, b => it.Click(), tipText, false);
                         Color bg = it.State == 1 ? Glass.Blue : it.State == 2 ? Color.FromArgb(150, 74, 155, 255) : Color.FromArgb(hov ? 46 : 24, 255, 255, 255);
                         Glass.Fill(g, c, S(9), bg);

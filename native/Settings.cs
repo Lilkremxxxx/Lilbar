@@ -8,8 +8,9 @@ using System.Windows.Forms;
 
 namespace Lilbar
 {
-    // Lilbar settings. An ordinary opaque window (glass windows make text boxes and dialogs see-through),
-    // drawn in the dock's dark-glass palette. Every change is saved and applied at once.
+    // Lilbar settings: a normal window with Windows 11's acrylic backdrop behind the whole client area, drawn as
+    // translucent glass cards with hairline edges. Text entry goes through InputDialog (text boxes can't sit on glass).
+    // Every change is saved and applied at once.
     class SettingsForm : Form
     {
         class Hot { public Rectangle R; public Action Click; public bool Nav; }
@@ -18,17 +19,17 @@ namespace Lilbar
 
         static SettingsForm current;
         static readonly string[] Tabs = { "Thanh", "Ứng dụng", "Khay hệ thống", "Thư mục", "Tiện ích", "Tài khoản" };
-        static readonly Color Bg = Color.FromArgb(255, 17, 17, 21), NavBg = Color.FromArgb(255, 23, 23, 29),
-            CardBg = Color.FromArgb(255, 33, 33, 41), Edge = Color.FromArgb(255, 52, 52, 62), BoxBg = Color.FromArgb(255, 44, 44, 54);
+        static readonly Color Bg = Color.FromArgb(70, 14, 16, 22), NavBg = Color.FromArgb(60, 0, 0, 0),
+            CardBg = Color.FromArgb(20, 255, 255, 255), Edge = Color.FromArgb(40, 255, 255, 255), Plate = Color.FromArgb(34, 255, 255, 255);
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")] static extern int DwmExtendFrameIntoClientArea(IntPtr h, ref N.RECT margins);
         readonly List<Hot> hots = new List<Hot>();
+        Bitmap buf;
         readonly List<Row> rows = new List<Row>();
         Row pressed, dragged;
         Point downAt;
         int dragY;
-        readonly TextBox nameBox = new TextBox(), tokenBox = new TextBox();
         readonly int navW;
         int tab, scroll, contentH;
-        bool filling;
 
         static int S(float v) { return Glass.S(v); }
 
@@ -53,30 +54,8 @@ namespace Lilbar
             StartPosition = FormStartPosition.CenterScreen;
             navW = S(170);
             ClientSize = new Size(S(700), S(560));
-            BackColor = Bg;
-            DoubleBuffered = true;
-            nameBox.BorderStyle = BorderStyle.None;
-            nameBox.BackColor = BoxBg;
-            nameBox.ForeColor = Color.White;
-            nameBox.Font = Glass.Body;
-            nameBox.MaxLength = 40;
-            nameBox.Visible = false;
-            nameBox.TextChanged += delegate
-            {
-                if (filling) return;
-                Config.Current.FolderName = nameBox.Text;
-                Config.Apply();
-            };
-            Controls.Add(nameBox);
-            tokenBox.BorderStyle = BorderStyle.None;
-            tokenBox.BackColor = BoxBg;
-            tokenBox.ForeColor = Color.White;
-            tokenBox.Font = Glass.Body;
-            tokenBox.MaxLength = 255;
-            tokenBox.UseSystemPasswordChar = true;
-            tokenBox.Visible = false;
-            tokenBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; SaveToken(); } };
-            Controls.Add(tokenBox);
+            BackColor = Color.Black;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.Opaque, true);
             Config.Changed += Invalidate;
         }
 
@@ -84,31 +63,42 @@ namespace Lilbar
         {
             Config.Changed -= Invalidate;
             current = null;
+            if (buf != null) buf.Dispose();
             base.OnFormClosed(e);
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            int on = 1;
+            int on = 1, acrylic = 3;
             N.DwmSetWindowAttribute(Handle, 20, ref on, 4); // dark title bar
+            N.DwmSetWindowAttribute(Handle, 38, ref acrylic, 4); // DWMWA_SYSTEMBACKDROP_TYPE: acrylic (Windows 11 22H2+)
+            var all = new N.RECT { Left = -1, Top = -1, Right = -1, Bottom = -1 };
+            DwmExtendFrameIntoClientArea(Handle, ref all); // the backdrop shows wherever our pixels are translucent
         }
 
         void SetTab(int t)
         {
             tab = Math.Max(0, Math.Min(Tabs.Length - 1, t));
             scroll = 0;
-            filling = true;
-            nameBox.Text = Config.Current.FolderName;
-            filling = false;
             Invalidate();
         }
 
+        // Drawn into a premultiplied bitmap and copied raw, so translucent pixels let the acrylic through.
         protected override void OnPaint(PaintEventArgs e)
         {
-            Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            if (buf == null || buf.Size != ClientSize)
+            {
+                if (buf != null) buf.Dispose();
+                buf = new Bitmap(Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height), System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            }
+            using (Graphics g = Glass.Begin(buf)) PaintAll(g);
+            Glass.Blit(e, buf);
+        }
+
+        void PaintAll(Graphics g)
+        {
+            using (var b = new SolidBrush(Bg)) g.FillRectangle(b, ClientRectangle);
             hots.Clear();
             rows.Clear();
 
@@ -117,7 +107,7 @@ namespace Lilbar
             for (int i = 0; i < Tabs.Length; i++)
             {
                 var r = new Rectangle(S(10), S(70) + i * S(40), navW - S(20), S(34));
-                if (i == tab) Glass.Fill(g, r, S(8), Color.FromArgb(70, 74, 155, 255));
+                if (i == tab) Glass.Fill(g, r, S(8), Color.FromArgb(110, 74, 155, 255));
                 Glass.Text(g, Tabs[i], Glass.Body, i == tab ? Color.White : Glass.Dim, new Rectangle(r.X + S(12), r.Y, r.Width - S(12), r.Height), StringAlignment.Near);
                 int t = i;
                 hots.Add(new Hot { R = r, Nav = true, Click = () => SetTab(t) });
@@ -126,21 +116,18 @@ namespace Lilbar
             var area = new Rectangle(navW, 0, ClientSize.Width - navW, ClientSize.Height);
             g.SetClip(area);
             int x = navW + S(24), w = area.Width - S(48), y = S(22) - scroll;
-            bool showName = false, showToken = false;
             switch (tab)
             {
                 case 0: PaintBar(g, x, w, ref y); break;
                 case 1: PaintApps(g, x, w, ref y); break;
                 case 2: PaintTray(g, x, w, ref y); break;
-                case 3: showName = PaintFolder(g, x, w, ref y); break;
-                case 4: showToken = PaintExtras(g, x, w, ref y); break;
+                case 3: PaintFolder(g, x, w, ref y); break;
+                case 4: PaintExtras(g, x, w, ref y); break;
                 case 5: PaintAccounts(g, x, w, ref y); break;
             }
             contentH = y + scroll + S(20);
             if (dragged != null) PaintDrag(g, x, w);
             g.ResetClip();
-            if (nameBox.Visible != showName) nameBox.Visible = showName;
-            if (tokenBox.Visible != showToken) tokenBox.Visible = showToken;
         }
 
         void Header(Graphics g, string text, int x, int w, ref int y)
@@ -179,7 +166,7 @@ namespace Lilbar
         int Toggle(Graphics g, Rectangle row, int right, bool on, Action click)
         {
             var r = new Rectangle(right - S(40), row.Y + (row.Height - S(22)) / 2, S(40), S(22));
-            Glass.Fill(g, r, S(11), on ? Glass.Blue : Color.FromArgb(255, 70, 70, 82));
+            Glass.Fill(g, r, S(11), on ? Glass.Blue : Color.FromArgb(70, 255, 255, 255));
             int k = S(16);
             using (var b = new SolidBrush(Color.White)) g.FillEllipse(b, on ? r.Right - k - S(3) : r.X + S(3), r.Y + S(3), k, k);
             hots.Add(new Hot { R = r, Click = click });
@@ -189,7 +176,7 @@ namespace Lilbar
         int Button(Graphics g, Rectangle row, int right, string glyph, bool enabled, Action click)
         {
             var r = new Rectangle(right - S(28), row.Y + (row.Height - S(28)) / 2, S(28), S(28));
-            Glass.Fill(g, r, S(7), Color.FromArgb(255, 48, 48, 58));
+            Glass.Fill(g, r, S(7), Plate);
             Glass.Center(g, glyph, Glass.Sym, enabled ? Color.White : Color.FromArgb(70, 255, 255, 255), r);
             if (enabled) hots.Add(new Hot { R = r, Click = click });
             return r.X - S(6);
@@ -198,7 +185,7 @@ namespace Lilbar
         int Segment(Graphics g, Rectangle row, int right, string text, bool on, Action click)
         {
             var r = new Rectangle(right - S(60), row.Y + (row.Height - S(28)) / 2, S(60), S(28));
-            Glass.Fill(g, r, S(7), on ? Glass.Blue : Color.FromArgb(255, 48, 48, 58));
+            Glass.Fill(g, r, S(7), on ? Glass.Blue : Plate);
             Glass.Center(g, text, Glass.Small, Color.White, r);
             hots.Add(new Hot { R = r, Click = click });
             return r.X - S(6);
@@ -274,7 +261,7 @@ namespace Lilbar
             List<ItemCfg> items = Config.Current.Items;
             List<int> on = new List<int>();
             for (int i = 0; i < items.Count; i++) if (items[i].On) on.Add(i);
-            Note(g, "Kéo thả để đổi thứ tự (hoặc kéo thẳng các ô trên thanh).", x, w, ref y);
+            Note(g, "Kéo thả để đổi thứ tự, hoặc chuột phải thanh → Chỉnh sửa thanh để kéo ngay trên dock.", x, w, ref y);
             Action<int, int> moveOn = (from, to) =>
             {
                 List<ItemCfg> active = items.FindAll(i => i.On);
@@ -360,7 +347,7 @@ namespace Lilbar
             else Note(g, "Kéo thả để đổi thứ tự.", x, w, ref y);
         }
 
-        static List<string> WindowsPinned()
+        internal static List<string> WindowsPinned()
         {
             var l = new List<string>();
             foreach (TrayIcon t in TrayHost.Icons)
@@ -405,15 +392,17 @@ namespace Lilbar
             if (seen.Count == 0) Note(g, "Chưa có app nào trong khay.", x, w, ref y);
         }
 
-        bool PaintFolder(Graphics g, int x, int w, ref int y)
+        void PaintFolder(Graphics g, int x, int w, ref int y)
         {
             Header(g, "THƯ MỤC", x, w, ref y);
-            Rectangle row = Card(g, x, w, ref y, null, "Tên", null);
-            var box = new Rectangle(row.X + S(80), row.Y + (row.Height - S(30)) / 2, row.Width - S(96), S(30));
-            Glass.Fill(g, box, S(6), BoxBg);
-            var tb = new Rectangle(box.X + S(8), box.Y + (box.Height - nameBox.PreferredHeight) / 2, box.Width - S(16), nameBox.PreferredHeight);
-            if (nameBox.Bounds != tb) nameBox.Bounds = tb;
-            bool visible = box.Top >= 0 && box.Bottom <= ClientSize.Height;
+            Rectangle row = Card(g, x, w, ref y, null, "Tên", Config.Current.FolderName);
+            Segment(g, row, row.Right - S(12), "Sửa", false, () =>
+            {
+                string v = InputDialog.Ask(this, "Tên thư mục", "Tên hiện trên ô thư mục", Config.Current.FolderName, false);
+                if (v == null) return;
+                Config.Current.FolderName = v.Length > 40 ? v.Substring(0, 40) : v;
+                Config.Apply();
+            });
 
             Header(g, "ỨNG DỤNG TRONG THƯ MỤC", x, w, ref y);
             List<string> apps = Config.Current.FolderApps;
@@ -425,11 +414,10 @@ namespace Lilbar
                 Button(g, row, row.Right - S(12), "✕", true, () => { apps.RemoveAt(idx); Config.Apply(); });
             }
             var add = new Rectangle(x, y, w, S(44));
-            Glass.Fill(g, add, S(10), Color.FromArgb(255, 38, 72, 124));
+            Glass.Fill(g, add, S(10), Color.FromArgb(150, 74, 155, 255));
             Glass.Center(g, "+  Thêm ứng dụng…", Glass.Body, Color.White, add);
             hots.Add(new Hot { R = add, Click = AddApps });
             y += S(52);
-            return visible;
         }
 
         // A "label: value" row with − / + style stepper buttons on the right.
@@ -444,7 +432,7 @@ namespace Lilbar
 
         static int Step(int v, int d, int min, int max) { return Math.Max(min, Math.Min(max, v + d)); }
 
-        bool PaintExtras(Graphics g, int x, int w, ref int y)
+        void PaintExtras(Graphics g, int x, int w, ref int y)
         {
             Config c = Config.Current;
             Header(g, "ĐỒNG HỒ THẾ GIỚI", x, w, ref y);
@@ -472,13 +460,12 @@ namespace Lilbar
 
             Header(g, "GITHUB", x, w, ref y);
             Note(g, "Tạo token tại github.com/settings/tokens, cần quyền notifications và read:user.", x, w, ref y);
-            Rectangle row = Card(g, x, w, ref y, null, GitHub.HasToken ? "Token mới" : "Token", null);
-            int right = Segment(g, row, row.Right - S(12), "Lưu", false, SaveToken);
-            var box = new Rectangle(row.X + S(110), row.Y + (row.Height - S(30)) / 2, right - row.X - S(116), S(30));
-            Glass.Fill(g, box, S(6), BoxBg);
-            var tb = new Rectangle(box.X + S(8), box.Y + (box.Height - tokenBox.PreferredHeight) / 2, box.Width - S(16), tokenBox.PreferredHeight);
-            if (tokenBox.Bounds != tb) tokenBox.Bounds = tb;
-            bool visible = box.Top >= 0 && box.Bottom <= ClientSize.Height;
+            Rectangle row = Card(g, x, w, ref y, null, GitHub.HasToken ? "Token mới" : "Token", GitHub.HasToken ? "Thay token đã lưu" : "Chưa đặt");
+            Segment(g, row, row.Right - S(12), "Nhập", false, () =>
+            {
+                string v = InputDialog.Ask(this, "GitHub: token", "Personal access token (notifications, read:user)", "", true);
+                if (v != null) SaveToken(v);
+            });
             if (GitHub.HasToken)
             {
                 string status = GitHub.Error ?? (GitHub.Login != null ? "Đã kết nối @" + GitHub.Login : "Đã lưu, đang kết nối…");
@@ -491,15 +478,13 @@ namespace Lilbar
                     Config.Apply();
                 });
             }
-            return visible;
         }
 
-        void SaveToken()
+        void SaveToken(string raw)
         {
-            string t = tokenBox.Text.Trim();
+            string t = raw.Trim();
             if (t.Length == 0 || t.IndexOfAny(new[] { ' ', '\t', '\r', '\n' }) >= 0) return; // tokens are a single word
             Config.Current.GitHubToken = Secret.Protect(t);
-            tokenBox.Text = "";
             GitHub.Error = null;
             GitHub.RefreshNow();
             Config.Apply();

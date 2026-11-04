@@ -13,6 +13,7 @@ namespace Lilbar
         public Action<MouseButtons> Down, Up;
         public bool Right; // forwards right clicks too (tray icons)
         public bool Separator; // a hairline above this menu row
+        public string Badge; // a small blue glyph badge on a grid icon (edit mode: "pin this")
     }
 
     // Clear-glass popup above the dock: a grid of icons (tray overflow, folder) or a short menu.
@@ -24,7 +25,7 @@ namespace Lilbar
         readonly List<PopItem> items;
         readonly bool grid, labels;
         readonly List<Rectangle> cells = new List<Rectangle>();
-        readonly ToolTip tip = new ToolTip();
+        readonly GlassTip tip = new GlassTip();
         readonly int M = Glass.ShadowMargin;
         Bitmap buf, frame;
         int hover = -1;
@@ -138,6 +139,12 @@ namespace Lilbar
                         if (it.Icon != null) g.DrawImage(it.Icon, new Rectangle(c.X + (c.Width - s) / 2, iy, s, s));
                         else if (it.Glyph != null) Glass.Center(g, it.Glyph, Glass.Glyph, Color.White, new Rectangle(c.X, iy, c.Width, s));
                         if (labels) Glass.Center(g, it.Text ?? "", Glass.Label, Color.White, new Rectangle(c.X + S(3), c.Y + S(46), c.Width - S(6), S(18)));
+                        if (it.Badge != null)
+                        {
+                            var bd = new Rectangle(c.Right - S(17), c.Y + S(3), S(14), S(14));
+                            using (var b = new SolidBrush(Glass.Blue)) g.FillEllipse(b, bd);
+                            Glass.Center(g, it.Badge, Glass.Badge, Color.White, new Rectangle(bd.X, bd.Y + S(1), bd.Width, bd.Height));
+                        }
                     }
                     else
                     {
@@ -207,6 +214,97 @@ namespace Lilbar
         {
             int h = At(e.Location);
             if (h >= 0 && items[h].Up != null && (e.Button == MouseButtons.Left || items[h].Right)) items[h].Up(e.Button);
+        }
+    }
+}
+
+namespace Lilbar
+{
+    // Replaces the WinForms ToolTip (a yellow classic box when visual styles are off) with a small glass card.
+    // Same Show/Hide calls as ToolTip; a negative y puts the card above the control (the dock), otherwise below.
+    class GlassTip
+    {
+        TipForm form;
+        public bool ShowAlways { get; set; }
+
+        public void Show(string text, Control owner, int x, int y, int ms)
+        {
+            Hide(owner);
+            if (string.IsNullOrEmpty(text)) return;
+            Point p = owner.PointToScreen(new Point(x, y < 0 ? 0 : y));
+            form = new TipForm(text, p, y < 0);
+            form.Show();
+        }
+
+        public void Hide(Control owner)
+        {
+            if (form == null) return;
+            if (!form.IsDisposed) form.Close();
+            form = null;
+        }
+
+        class TipForm : Form
+        {
+            readonly string[] lines;
+            readonly int M = Glass.ShadowMargin;
+            Bitmap buf;
+
+            static int S(float v) { return Glass.S(v); }
+
+            public TipForm(string text, Point at, bool above)
+            {
+                lines = text.Split('\n');
+                FormBorderStyle = FormBorderStyle.None;
+                ShowInTaskbar = false;
+                TopMost = true;
+                StartPosition = FormStartPosition.Manual;
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.Opaque, true);
+                int w = 0;
+                for (int i = 0; i < lines.Length; i++) w = Math.Max(w, Glass.Measure(lines[i], i == 0 ? Glass.Row : Glass.Small));
+                w += S(24);
+                int h = S(12) + lines.Length * S(20);
+                Rectangle sb = Screen.FromPoint(at).Bounds;
+                int x = Math.Max(sb.Left + S(4), Math.Min(at.X - S(8), sb.Right - w - S(4)));
+                int y = above ? at.Y - S(8) - h : at.Y;
+                Bounds = new Rectangle(x - M, y - M, w + 2 * M, h + 2 * M);
+            }
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    CreateParams cp = base.CreateParams;
+                    cp.ExStyle |= 0x80 | 0x08000000 | 0x8 | 0x20; // TOOLWINDOW | NOACTIVATE | TOPMOST | TRANSPARENT
+                    return cp;
+                }
+            }
+
+            protected override bool ShowWithoutActivation { get { return true; } }
+
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == 0x84) { m.Result = (IntPtr)(-1); return; } // WM_NCHITTEST: HTTRANSPARENT, never in the way
+                base.WndProc(ref m);
+            }
+
+            protected override void OnHandleCreated(EventArgs e)
+            {
+                base.OnHandleCreated(e);
+                Glass.MakeClear(Handle);
+                buf = new Bitmap(Width, Height, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Glass.Begin(buf))
+                {
+                    var panel = new Rectangle(M, M, Width - 2 * M, Height - 2 * M);
+                    Glass.Shadow(g, panel, S(10));
+                    Glass.Panel(g, panel);
+                    for (int i = 0; i < lines.Length; i++)
+                        Glass.Text(g, lines[i], i == 0 ? Glass.Row : Glass.Small, i == 0 ? Color.White : Glass.Dim, new Rectangle(M + S(12), M + S(6) + i * S(20), panel.Width - S(20), S(20)), StringAlignment.Near);
+                }
+            }
+
+            protected override void OnPaint(PaintEventArgs e) { Glass.Blit(e, buf); }
+
+            protected override void OnFormClosed(FormClosedEventArgs e) { if (buf != null) buf.Dispose(); base.OnFormClosed(e); }
         }
     }
 }

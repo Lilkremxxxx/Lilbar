@@ -14,7 +14,7 @@ namespace Lilbar
         public static float Scale = 1;
         public static readonly Color Blue = Color.FromArgb(255, 74, 155, 255);
         public static readonly Color Dim = Color.FromArgb(225, 255, 255, 255);
-        public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge, Menu, MenuIcon, Fluent;
+        public static Font Time, Date, Value, Label, Batt, Bolt, Row, Day, DateBig, Glyph, Sym, Big, Body, Small, Header, Title, Mdl, MdlSmall, Flip, Strike, GlyphBig, Huge, Menu, MenuIcon, Fluent, Badge;
         static readonly Bitmap measureBmp = new Bitmap(1, 1);
 
         public static int S(float v) { return (int)Math.Round(v * Scale); }
@@ -50,6 +50,7 @@ namespace Lilbar
             Huge = F(disp, 22, FontStyle.Bold);
             Menu = F(semi, 14, FontStyle.Regular);
             MenuIcon = F("Segoe MDL2 Assets", 15, FontStyle.Regular);
+            Badge = F("Segoe MDL2 Assets", 7, FontStyle.Bold);
             Fluent = F(Has("Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets", 20, FontStyle.Regular); // Windows 11's own Quick Settings icons
         }
 

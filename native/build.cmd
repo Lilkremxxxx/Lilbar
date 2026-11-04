@@ -5,4 +5,4 @@ set W=%WINDIR%\System32\WinMetadata
 "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /optimize+ /out:"%~dp0Lilbar.exe" ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.Security.dll /r:System.Runtime.dll ^
   /r:"%W%\Windows.Foundation.winmd" /r:"%W%\Windows.Media.winmd" /r:"%W%\Windows.Devices.winmd" /r:"%W%\Windows.Storage.winmd" /r:"%W%\Windows.Networking.winmd" ^
-  "%~dp0*.cs"
+  /resource:"%~dp0claude.png",claude.png "%~dp0*.cs"

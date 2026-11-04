@@ -253,6 +253,29 @@ namespace Lilbar
     // keeps in .credentials.json, sent only to api.anthropic.com. Response shape observed 2026-11-04.
     static class Claude
     {
+        static Bitmap mark;
+
+        // Claude's mark (claude.png, embedded) at exactly px pixels, scaled once.
+        public static Bitmap Mark(int px)
+        {
+            if (mark != null && mark.Width == px) return mark;
+            using (Stream s = typeof(Claude).Assembly.GetManifestResourceStream("claude.png"))
+            {
+                if (s == null) return null;
+                using (var src = new Bitmap(s))
+                {
+                    var b = new Bitmap(px, px, PixelFormat.Format32bppPArgb);
+                    using (Graphics g = Graphics.FromImage(b))
+                    {
+                        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                        g.DrawImage(src, 0, 0, px, px);
+                    }
+                    return mark = b;
+                }
+            }
+        }
+
         public class Limit { public double Pct; public DateTime Reset; }
         public static volatile Limit Session, Week;
         public static volatile string Error; // null when the last read worked
@@ -565,10 +588,15 @@ namespace Lilbar
         class AppItem { public string Title, Pin; public Bitmap Icon; public bool Running, Active; public Action Click; public List<Win> Wins; public string Key { get { return Pin ?? (Wins.Count > 0 ? Wins[0].Hwnd.ToString() : Title); } } }
         class Slot { public Rectangle R; public string Id; }
 
+        // Edit mode (right-click → Chỉnh sửa thanh): tiles and pinned apps drag, × takes a tile off, tray icons
+        // move between the bar and the arrow. Clicks don't launch anything until "Xong".
+        public static bool Editing;
+        readonly List<Hit> editHits = new List<Hit>();
+
         static readonly int TaskbarCreatedMsg = N.RegisterWindowMessage("TaskbarCreated");
         readonly Screen screen;
         readonly bool primary;
-        readonly ToolTip tip = new ToolTip();
+        readonly GlassTip tip = new GlassTip();
         readonly List<Hit> hits = new List<Hit>();
         Bitmap buf;
         int H, hover = -1;
@@ -674,6 +702,21 @@ namespace Lilbar
                 used += segs[i].W + S(6);
                 if (used > room) { segs.RemoveRange(i, segs.Count - i); break; }
             }
+            if (Editing)
+            {
+                segs.Add(new Seg { W = slot + S(8), Draw = (g, r) =>
+                {
+                    Glass.Fill(g, r, S(9), Color.FromArgb(40, 255, 255, 255));
+                    Glass.Center(g, "", Glass.Fluent, Color.White, r);
+                    editHits.Add(new Hit { R = r, Up = b => Manager.OpenSettings(0), Tip = "Thêm widget\nMở thư viện widget trong Cài đặt" });
+                } });
+                segs.Add(new Seg { W = S(70), Draw = (g, r) =>
+                {
+                    Glass.Fill(g, r, S(9), Glass.Blue);
+                    Glass.Center(g, "Xong", Glass.Row, Color.White, r);
+                    editHits.Add(new Hit { R = r, Up = b => Manager.SetEditing(false), Tip = "Thoát chế độ chỉnh sửa" });
+                } });
+            }
             if (segs.Count == 0) // keep something to right-click
                 segs.Add(new Seg { W = slot + S(8), Draw = (g, r) => { Glass.Tile(g, r); Glass.Center(g, "☰", Glass.Glyph, Color.White, r); AddHit(r, null, b => ShowMenu(), "Lilbar", false); } });
 
@@ -689,6 +732,7 @@ namespace Lilbar
             if (Left != x0 || Top != sb.Bottom - H || Width != W || Height != H) SetBounds(x0, sb.Bottom - H, W, H);
 
             hits.Clear();
+            editHits.Clear();
             segSlots.Clear();
             pinSlots.Clear();
             using (Graphics g = Glass.Begin(buf))
@@ -703,9 +747,45 @@ namespace Lilbar
                     else sg.Draw(g, r);
                     x += sg.W + gap;
                 }
+                if (Editing) DrawEdit(g);
                 if (dragging) DrawDrag(g);
             }
+            if (Editing) { hits.Clear(); hits.AddRange(editHits); } // only the edit controls answer clicks
             Invalidate();
+        }
+
+        // Edit mode: a dashed blue outline on every tile and a remove badge in its corner.
+        void DrawEdit(Graphics g)
+        {
+            foreach (Slot s in segSlots)
+            {
+                if (dragging && !dragPin && s.Id == dragFrom.Id) continue;
+                using (GraphicsPath p = Glass.Round(new Rectangle(s.R.X, s.R.Y, s.R.Width - 1, s.R.Height - 1), S(9)))
+                using (var pen = new Pen(Color.FromArgb(200, 74, 155, 255), 1.5f) { DashStyle = DashStyle.Dash }) g.DrawPath(pen, p);
+                string id = s.Id;
+                Rectangle badge = Badge(g, s.R, "", Color.FromArgb(235, 70, 70, 78));
+                editHits.Add(new Hit { R = badge, Up = b => { ItemCfg it = Config.Current.Items.Find(x => x.Id == id); if (it != null) { it.On = false; Config.Apply(); } }, Tip = "Gỡ khỏi thanh" });
+            }
+        }
+
+        // A small round badge in the top-right corner of r; returns its hit area.
+        static Rectangle Badge(Graphics g, Rectangle r, string glyph, Color fill)
+        {
+            int d = S(14);
+            var c = new Rectangle(r.Right - d - S(1), r.Y + S(1), d, d);
+            using (var b = new SolidBrush(fill)) g.FillEllipse(b, c);
+            using (var pen = new Pen(Color.FromArgb(120, 255, 255, 255))) g.DrawEllipse(pen, c);
+            Glass.Center(g, glyph, Glass.Badge, Color.White, new Rectangle(c.X, c.Y + S(1), c.Width, c.Height));
+            return Rectangle.Inflate(c, S(3), S(3));
+        }
+
+        static void PinTray(TrayIcon t, bool pin)
+        {
+            if (Config.Current.TrayPinned == null) Config.Current.TrayPinned = SettingsForm.WindowsPinned();
+            List<string> l = Config.Current.TrayPinned;
+            l.RemoveAll(s => string.Equals(s, t.Exe, StringComparison.OrdinalIgnoreCase));
+            if (pin) l.Add(t.Exe);
+            Config.Apply();
         }
 
         static void EmptySlot(Graphics g, Rectangle r, int rad)
@@ -875,11 +955,14 @@ namespace Lilbar
             if (!Claude.Available) return null;
             return new Seg
             {
-                W = S(172),
+                W = S(198),
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);
                     AddHit(r, null, b => { Claude.RefreshNow(); Manager.Tick(); }, ClaudeTip(), false);
+                    Bitmap mark = Claude.Mark(S(20));
+                    if (mark != null) g.DrawImage(mark, r.X + S(8), r.Y + (r.Height - mark.Height) / 2);
+                    r = new Rectangle(r.X + S(26), r.Y, r.Width - S(26), r.Height);
                     if (Claude.Session == null && Claude.Week == null)
                     {
                         Glass.Center(g, "Claude", Glass.Row, Color.White, new Rectangle(r.X, r.Y + S(3), r.Width, th / 2 - S(2)));
@@ -930,6 +1013,8 @@ namespace Lilbar
                         bool hov = AddHit(c, b => TrayHost.MouseDown(ti, b == MouseButtons.Right), b => TrayHost.MouseUp(ti, b == MouseButtons.Right), ti.Tip, true);
                         if (hov) Glass.Fill(g, c, S(8), Color.FromArgb(36, 255, 255, 255));
                         g.DrawImage(ti.Icon, new Rectangle(c.X + (cell - ic) / 2, cy - ic / 2, ic, ic));
+                        if (Editing && ti.Exe.Length > 0)
+                            editHits.Add(new Hit { R = Badge(g, c, "", Color.FromArgb(235, 70, 70, 78)), Up = b => PinTray(ti, false), Tip = "Đưa vào trong mũi tên" });
                         x += cell;
                     }
                     var a = new Rectangle(x, r.Y + S(3), arrow, r.Height - S(6));
@@ -949,6 +1034,18 @@ namespace Lilbar
                     }, "Hiện biểu tượng ẩn", false);
                     if (ah || open) Glass.Fill(g, a, S(8), Color.FromArgb(36, 255, 255, 255));
                     Glass.Chevron(g, a, open);
+                    if (Editing)
+                        editHits.Add(new Hit { R = a, Tip = "Chọn app để ghim ra ngoài mũi tên", Up = b =>
+                        {
+                            var items = new List<PopItem>();
+                            foreach (TrayIcon t in TrayHost.Visible())
+                            {
+                                if (TrayHost.IsPinned(t) || t.Exe.Length == 0) continue;
+                                TrayIcon ti = t;
+                                items.Add(new PopItem { Icon = ti.Icon, Tip = "Ghim ra thanh: " + ti.Tip, Badge = "", Up = bb => { ClosePopup(); PinTray(ti, true); } });
+                            }
+                            TogglePopup("tray", "Bấm để ghim ra thanh", items, true, aScreen);
+                        } });
                 }
             };
         }
@@ -1049,6 +1146,7 @@ namespace Lilbar
             {
                 new PopItem { Glyph = "", Text = "Cài đặt Lilbar", Up = b => { ClosePopup(); Manager.OpenSettings(0); } },
                 new PopItem { Glyph = auto ? "" : "", Text = "Khởi động cùng Windows", Up = b => { ClosePopup(); Startup.Set(!auto); } },
+                new PopItem { Glyph = "", Text = Editing ? "Xong chỉnh sửa" : "Chỉnh sửa thanh", Up = b => { ClosePopup(); Manager.SetEditing(!Editing); } },
                 new PopItem { Glyph = "", Text = "Thoát Lilbar", Separator = true, Up = b => { ClosePopup(); Manager.Quit(null); } },
             };
             N.POINT p;
@@ -1201,7 +1299,7 @@ namespace Lilbar
             ClosePreview();
             Hit h = HitAt(e.Location);
             dragFrom = null;
-            if (e.Button == MouseButtons.Left && (h == null || h.Down == null)) // tray icons forward presses to their apps, so they don't drag
+            if (Editing && e.Button == MouseButtons.Left && (h == null || h.Down == null)) // drags only in edit mode
             {
                 downAt = e.Location;
                 dragX = e.X;
@@ -1280,6 +1378,13 @@ namespace Lilbar
         }
 
         static int ticks;
+
+        public static void SetEditing(bool on)
+        {
+            Dock.Editing = on;
+            lastSig = null;
+            foreach (Dock d in docks) d.Redraw();
+        }
 
         public static void Tick()
         {
