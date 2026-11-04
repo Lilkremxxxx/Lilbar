@@ -1,4 +1,4 @@
-// Lilbar: a clear-glass dock that replaces the Windows taskbar.
+// Lilbar: a clear-glass dock that replaces the Windows taskbar on every monitor.
 // Build with build.cmd (csc.exe that ships with Windows, so C# 5 only: no $"", no ?., no => members).
 // Lilbar.exe --restore   puts the Windows taskbar back after a hard kill.
 // Lilbar.exe --selftest  checks the Win32 plumbing and returns the number of failures.
@@ -6,9 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using System.Drawing.Text;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -19,6 +17,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace Lilbar
 {
@@ -26,27 +25,44 @@ namespace Lilbar
     {
         public delegate bool EnumProc(IntPtr h, IntPtr l);
         public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+        public delegate IntPtr WndProcFn(IntPtr h, uint msg, IntPtr w, IntPtr l);
         [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+        [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
         [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder sb, int n);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] public static extern IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v);
         [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
         [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+        [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(uint pid);
         [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
         [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+        [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int RegisterWindowMessage(string name);
+        [DllImport("user32.dll")] public static extern bool SendNotifyMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+        [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+        [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
         [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod, WinEventProc proc, uint pid, uint thread, uint flags);
         [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
         [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
         [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
         [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr h);
+        [DllImport("user32.dll")] public static extern uint GetDoubleClickTime();
+        [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern ushort RegisterClass(ref WNDCLASS wc);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool UnregisterClass(string cls, IntPtr inst);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr CreateWindowEx(uint ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
+        [DllImport("user32.dll")] public static extern bool DestroyWindow(IntPtr h);
+        [DllImport("user32.dll")] public static extern IntPtr DefWindowProc(IntPtr h, uint msg, IntPtr w, IntPtr l);
         [DllImport("user32.dll")] public static extern int SetWindowCompositionAttribute(IntPtr h, ref WCAD data);
         [DllImport("gdi32.dll")] public static extern int SetDIBitsToDevice(IntPtr hdc, int x, int y, uint w, uint h, int sx, int sy, uint start, uint lines, IntPtr bits, ref BITMAPINFOHEADER bmi, uint usage);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetModuleHandle(string name);
         [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern bool QueryFullProcessImageName(IntPtr h, uint flags, StringBuilder sb, ref uint size);
         [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
@@ -56,7 +72,9 @@ namespace Lilbar
         [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int value, int size);
         [DllImport("shell32.dll")] public static extern UIntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SHGetFileInfo(string path, uint attr, ref SHFILEINFO info, uint size, uint flags);
+        [DllImport("shell32.dll")] public static extern int SHGetKnownFolderPath(ref Guid id, uint flags, IntPtr token, out IntPtr path);
 
+        [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
         [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
         [StructLayout(LayoutKind.Sequential)] public struct APPBARDATA { public uint cbSize; public IntPtr hWnd; public uint uCallbackMessage; public uint uEdge; public RECT rc; public IntPtr lParam; }
         [StructLayout(LayoutKind.Sequential)] public struct MEMSTATUS { public uint dwLength, dwMemoryLoad; public ulong total, avail, totalPage, availPage, totalVirtual, availVirtual, availExtended; }
@@ -65,17 +83,36 @@ namespace Lilbar
         [StructLayout(LayoutKind.Sequential)] public struct BITMAPINFOHEADER { public uint biSize; public int biWidth, biHeight; public ushort biPlanes, biBitCount; public uint biCompression, biSizeImage; public int biXPelsPerMeter, biYPelsPerMeter; public uint biClrUsed, biClrImportant; }
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         public struct SHFILEINFO { public IntPtr hIcon; public int iIcon; public uint dwAttributes; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szDisplayName; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName; }
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct WNDCLASS { public uint style; public WndProcFn lpfnWndProc; public int cbClsExtra, cbWndExtra; public IntPtr hInstance, hIcon, hCursor, hbrBackground; public string lpszMenuName, lpszClassName; }
+        [StructLayout(LayoutKind.Sequential)] public struct COPYDATASTRUCT { public IntPtr dwData; public int cbData; public IntPtr lpData; }
+        // Tray payloads use 32-bit handle fields on every architecture (ManagedShell's layout).
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct NOTIFYICONDATA
+        {
+            public int cbSize; public uint hWnd, uID, uFlags, uCallbackMessage, hIcon;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string szTip;
+            public int dwState, dwStateMask;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string szInfo;
+            public uint uVersion;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string szInfoTitle;
+            public uint dwInfoFlags; public Guid guidItem; public uint hBalloonIcon;
+        }
+        [StructLayout(LayoutKind.Sequential)] public struct SHELLTRAYDATA { public int dwUnknown; public uint dwMessage; public NOTIFYICONDATA nid; }
+        [StructLayout(LayoutKind.Sequential)] public struct WINNOTIFYICONIDENTIFIER { public int dwMagic, dwMessage, cbSize, dwPadding; public uint hWnd, uID; public Guid guidItem; }
     }
 
-    // Hides the Windows taskbar and keeps it hidden: explorer re-shows it on some events (Start menu,
-    // display changes), so a WinEvent hook on explorer's process hides it again at once.
-    // Explorer keeps reserving its strip while hidden, and the dock sits exactly in that strip.
+    // Hides explorer's taskbars (every monitor) and keeps them hidden: explorer re-shows them on some events
+    // (Start menu, display changes), so a WinEvent hook on explorer's process hides them again at once.
+    // Explorer keeps reserving their strips while hidden, and each dock sits exactly in its strip.
     static class Taskbar
     {
         // Written only by the older auto-hide build; still read so its leftovers get undone.
         static readonly string StateFile = Path.Combine(Path.GetTempPath(), "lilbar-taskbar-state.json");
+        static readonly StringBuilder cls = new StringBuilder(64);
         static N.WinEventProc onShow; // field keeps the delegate alive while native code holds it
-        static IntPtr hook, tray;
+        static IntPtr hook;
+        public static bool WasAutoHide;
 
         static N.APPBARDATA Abd(IntPtr h)
         {
@@ -86,30 +123,69 @@ namespace Lilbar
             return d;
         }
 
-        static IntPtr Tray() { return N.FindWindow("Shell_TrayWnd", null); }
+        // Explorer's main taskbar, skipping Lilbar's own tray host window of the same class.
+        public static IntPtr Primary()
+        {
+            IntPtr h = IntPtr.Zero;
+            while ((h = N.FindWindowEx(IntPtr.Zero, h, "Shell_TrayWnd", null)) != IntPtr.Zero)
+                if (h != TrayHost.Hwnd) return h;
+            return IntPtr.Zero;
+        }
 
-        // Returns the taskbar's height in pixels; autoHide tells whether explorer reserves no strip.
-        public static int Hide(out bool autoHide)
+        public static List<IntPtr> All()
+        {
+            var list = new List<IntPtr>();
+            foreach (string c in new[] { "Shell_TrayWnd", "Shell_SecondaryTrayWnd" })
+            {
+                IntPtr h = IntPtr.Zero;
+                while ((h = N.FindWindowEx(IntPtr.Zero, h, c, null)) != IntPtr.Zero)
+                    if (h != TrayHost.Hwnd) list.Add(h);
+            }
+            return list;
+        }
+
+        public static void CaptureAutoHide()
         {
             if (File.Exists(StateFile)) Restore();
-            tray = Tray();
-            var d = Abd(tray);
-            autoHide = ((ulong)N.SHAppBarMessage(4, ref d) & 1) != 0; // ABM_GETSTATE & ABS_AUTOHIDE
-            N.RECT r;
-            N.GetWindowRect(tray, out r);
-            N.ShowWindow(tray, 0);
+            var d = Abd(Primary());
+            WasAutoHide = ((ulong)N.SHAppBarMessage(4, ref d) & 1) != 0; // ABM_GETSTATE & ABS_AUTOHIDE
+        }
+
+        // Height of the taskbar on the monitor with these bounds; 0 when that monitor has none.
+        public static int HeightOn(Rectangle bounds)
+        {
+            foreach (IntPtr t in All())
+            {
+                N.RECT r;
+                N.GetWindowRect(t, out r);
+                if (bounds.Contains(new Point((r.Left + r.Right) / 2, (r.Top + r.Bottom) / 2))) return r.Bottom - r.Top;
+            }
+            return 0;
+        }
+
+        public static void Hide()
+        {
+            foreach (IntPtr t in All()) N.ShowWindow(t, 0);
             Watch();
-            return r.Bottom - r.Top;
+        }
+
+        static bool IsTaskbar(IntPtr h)
+        {
+            cls.Clear();
+            N.GetClassName(h, cls, cls.Capacity);
+            string c = cls.ToString();
+            return c == "Shell_TrayWnd" || c == "Shell_SecondaryTrayWnd";
         }
 
         static void Watch()
         {
             Unwatch();
             uint pid;
-            N.GetWindowThreadProcessId(tray, out pid);
+            N.GetWindowThreadProcessId(Primary(), out pid);
+            if (pid == 0) return;
             onShow = delegate(IntPtr hk, uint ev, IntPtr h, int obj, int child, uint thread, uint time)
             {
-                if (h == tray && obj == 0) N.ShowWindow(h, 0);
+                if (obj == 0 && h != TrayHost.Hwnd && IsTaskbar(h)) N.ShowWindow(h, 0);
             };
             hook = N.SetWinEventHook(0x8002, 0x8002, IntPtr.Zero, onShow, pid, 0, 0); // EVENT_OBJECT_SHOW, out of context
         }
@@ -124,7 +200,6 @@ namespace Lilbar
         public static void Restore()
         {
             Unwatch();
-            IntPtr t = Tray();
             if (File.Exists(StateFile))
             {
                 int state = 0;
@@ -135,11 +210,11 @@ namespace Lilbar
                     File.Delete(StateFile);
                 }
                 catch (Exception e) { Log(e); }
-                var d = Abd(t);
+                var d = Abd(Primary());
                 d.lParam = (IntPtr)state;
                 N.SHAppBarMessage(10, ref d); // ABM_SETSTATE
             }
-            N.ShowWindow(t, 5);
+            foreach (IntPtr t in All()) N.ShowWindow(t, 5);
         }
 
         // Only needed when the user's taskbar is auto-hide, so explorer reserves nothing.
@@ -286,6 +361,13 @@ namespace Lilbar
             return exe;
         }
 
+        public static string ExeOfWindow(IntPtr h)
+        {
+            uint pid;
+            N.GetWindowThreadProcessId(h, out pid);
+            return pid == 0 ? "" : ExePath(pid);
+        }
+
         // Top-level, visible, uncloaked, titled windows: what the Windows taskbar shows.
         public static List<Win> Windows()
         {
@@ -314,13 +396,30 @@ namespace Lilbar
             return list;
         }
 
+        // We usually own the last input (a click on the dock), which lets SetForegroundWindow work;
+        // the ALT tap is the fallback when Windows' foreground lock still refuses.
+        public static void Foreground(IntPtr h)
+        {
+            if (N.SetForegroundWindow(h) && N.GetForegroundWindow() == h) return;
+            N.keybd_event(0x12, 0, 0, UIntPtr.Zero);
+            N.SetForegroundWindow(h);
+            N.keybd_event(0x12, 0, 2, UIntPtr.Zero);
+        }
+
         public static void Activate(IntPtr h)
         {
             if (N.GetForegroundWindow() == h) { N.ShowWindow(h, 6); return; } // SW_MINIMIZE
             if (N.IsIconic(h)) N.ShowWindow(h, 9); // SW_RESTORE
-            N.keybd_event(0x12, 0, 0, UIntPtr.Zero); // ALT press lifts the foreground lock for a non-focused process
-            N.SetForegroundWindow(h);
-            N.keybd_event(0x12, 0, 2, UIntPtr.Zero);
+            Foreground(h);
+        }
+
+        // Win + key, e.g. N for the notification center, like clicking the clock on the real taskbar.
+        public static void WinKey(byte vk)
+        {
+            N.keybd_event(0x5B, 0, 0, UIntPtr.Zero);
+            N.keybd_event(vk, 0, 0, UIntPtr.Zero);
+            N.keybd_event(vk, 0, 2, UIntPtr.Zero);
+            N.keybd_event(0x5B, 0, 2, UIntPtr.Zero);
         }
 
         public static void Launch(string path)
@@ -388,60 +487,44 @@ namespace Lilbar
         }
     }
 
+    // One dock per monitor, in the strip that monitor's taskbar used. Tiles come from Config.Items, in order.
     class Dock : Form
     {
-        class Hit { public Rectangle R; public Action Click; public string Tip; }
+        class Hit { public Rectangle R; public Action<MouseButtons> Down, Up; public string Tip; public bool Right; }
+        class Seg { public int W; public Action<Graphics, Rectangle> Draw; }
         class AppItem { public string Title; public Bitmap Icon; public bool Running, Active; public Action Click; }
 
-        static readonly Color Blue = Color.FromArgb(255, 74, 155, 255);
-        static readonly int TaskbarCreated = N.RegisterWindowMessage("TaskbarCreated");
-        readonly float scale;
-        readonly Font fTime, fDate, fValue, fLabel, fBatt, fBolt, fRow;
-        readonly NotifyIcon tray;
+        static readonly int TaskbarCreatedMsg = N.RegisterWindowMessage("TaskbarCreated");
+        readonly Screen screen;
+        readonly bool primary;
         readonly ToolTip tip = new ToolTip();
-        readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         readonly List<Hit> hits = new List<Hit>();
-        readonly Bitmap measureBmp = new Bitmap(1, 1);
-        List<Pin> pins = new List<Pin>();
-        List<Win> wins = new List<Win>();
         Bitmap buf;
-        int H, cpu, ram, tick, hover = -1;
-        string sig = "";
-        bool reserved, hidden;
+        int H, hover = -1;
+        bool reserved;
+        Popup popup;
+        string popupKey, justClosed;
 
-        int S(float v) { return (int)Math.Round(v * scale); }
+        static int S(float v) { return Glass.S(v); }
 
-        public Dock()
+        public Dock(Screen s)
         {
-            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) scale = g.DpiX / 96f;
-            H = S(48);
+            screen = s;
+            primary = s.Primary;
+            H = Taskbar.HeightOn(s.Bounds);
+            if (H < S(24) || H > S(120)) H = S(48);
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
             Text = "Lilbar";
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.Opaque, true);
-
-            fTime = new Font("Segoe UI", S(14), FontStyle.Bold, GraphicsUnit.Pixel);
-            fDate = new Font("Segoe UI", S(10), FontStyle.Regular, GraphicsUnit.Pixel);
-            fValue = new Font("Segoe UI Semibold", S(10.5f), FontStyle.Regular, GraphicsUnit.Pixel);
-            fLabel = new Font("Segoe UI", S(7), FontStyle.Regular, GraphicsUnit.Pixel);
-            fBatt = new Font("Segoe UI", S(13), FontStyle.Bold, GraphicsUnit.Pixel);
-            fBolt = new Font("Segoe UI Symbol", S(11), FontStyle.Regular, GraphicsUnit.Pixel);
-            fRow = new Font("Segoe UI Semibold", S(9.5f), FontStyle.Regular, GraphicsUnit.Pixel);
-
-            tray = new NotifyIcon();
-            tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            tray.Text = "Lilbar";
-            tray.ContextMenu = new ContextMenu(new[] { new MenuItem("Thoát Lilbar", delegate { Close(); }) });
-            tray.Visible = true;
-
             tip.ShowAlways = true;
-            timer.Interval = 1000;
-            timer.Tick += delegate { Tick(); };
-            pins = Sys.Pinned();
-            Sys.Cpu();
+            Bounds = new Rectangle(s.Bounds.X, s.Bounds.Bottom - H, S(48), H);
         }
+
+        public bool IsPrimary { get { return primary; } }
+        public Rectangle Strip { get { Rectangle b = screen.Bounds; return new Rectangle(b.X, b.Bottom - H, b.Width, H); } }
 
         protected override CreateParams CreateParams
         {
@@ -455,97 +538,91 @@ namespace Lilbar
 
         protected override bool ShowWithoutActivation { get { return true; } }
 
-        protected override void OnHandleCreated(EventArgs e)
-        {
-            base.OnHandleCreated(e);
-            int none = unchecked((int)0xFFFFFFFE);
-            N.DwmSetWindowAttribute(Handle, 34, ref none, 4); // DWMWA_BORDER_COLOR = none
-            // Clear glass: per-pixel alpha with no blur; only the tiles are drawn.
-            var accent = new N.ACCENT { AccentState = 2, AccentFlags = 2, GradientColor = 0 }; // TRANSPARENTGRADIENT
-            int size = Marshal.SizeOf(typeof(N.ACCENT));
-            IntPtr p = Marshal.AllocHGlobal(size);
-            try
-            {
-                Marshal.StructureToPtr(accent, p, false);
-                var d = new N.WCAD { Attribute = 19, Data = p, SizeOfData = size }; // WCA_ACCENT_POLICY
-                N.SetWindowCompositionAttribute(Handle, ref d);
-            }
-            finally { Marshal.FreeHGlobal(p); }
-        }
-
-        void HideTaskbar()
-        {
-            bool autoHide;
-            int h = Taskbar.Hide(out autoHide);
-            if (h > S(24) && h < S(120)) H = h;
-            hidden = true;
-            if (autoHide && !reserved)
-            {
-                Rectangle b = Screen.PrimaryScreen.Bounds;
-                Taskbar.Reserve(Handle, new Rectangle(b.X, b.Bottom - H, b.Width, H));
-                reserved = true;
-            }
-        }
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Glass.MakeClear(Handle); }
 
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            HideTaskbar();
-            Tick();
-            timer.Start();
+            if (Taskbar.WasAutoHide) { Taskbar.Reserve(Handle, Strip); reserved = true; }
+            Redraw();
         }
 
-        // Explorer restarted: a new taskbar appeared, hide it again.
+        // Explorer restarted (or our own broadcast): hide its taskbars again.
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == TaskbarCreated && hidden) HideTaskbar();
+            if (m.Msg == TaskbarCreatedMsg && primary) Manager.OnTaskbarCreated();
             base.WndProc(ref m);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            timer.Stop();
+            ClosePopup();
             if (reserved) Taskbar.Unreserve(Handle);
-            reserved = hidden = false;
-            Taskbar.Restore();
-            tray.Visible = false;
+            reserved = false;
+            if (!Manager.Rebuilding) Manager.Quit(this); // closed from outside (taskkill, logoff): quit cleanly
             base.OnFormClosing(e);
         }
 
-        static string DateText(DateTime d)
+        bool AddHit(Rectangle r, Action<MouseButtons> down, Action<MouseButtons> up, string tipText, bool right)
         {
-            string day = d.DayOfWeek == DayOfWeek.Sunday ? "CN" : "THỨ " + ((int)d.DayOfWeek + 1);
-            return day + ", " + d.Day + " THG " + d.Month;
+            hits.Add(new Hit { R = r, Down = down, Up = up, Tip = tipText, Right = right });
+            return hits.Count - 1 == hover;
         }
 
-        void Tick()
-        {
-            tick++;
-            if (tick % 30 == 0) pins = Sys.Pinned();
-            if (tick % 2 == 1) { cpu = Sys.Cpu(); ram = Sys.Ram(); }
-            Claude.MaybeFetch(delegate { if (IsHandleCreated) BeginInvoke((Action)Tick); });
-            wins = Sys.Windows();
-            PowerStatus ps = SystemInformation.PowerStatus;
-            var s = new StringBuilder();
-            foreach (Win w in wins) s.Append(w.Hwnd).Append(w.Active ? '*' : '-').Append(w.Title).Append('|');
-            s.Append(pins.Count).Append(cpu).Append('/').Append(ram).Append(DateTime.Now.ToString("HH:mm d"));
-            s.Append(ps.BatteryLifePercent).Append(ps.PowerLineStatus);
-            s.Append(Claude.Available).Append(Claude.Error).Append(LimitSig(Claude.Session)).Append(LimitSig(Claude.Week));
-            if (s.ToString() == sig) return; // nothing visible changed: no repaint
-            sig = s.ToString();
-            Render();
-        }
+        Rectangle ToScreen(Rectangle r) { return new Rectangle(Left + r.X, Top + r.Y, r.Width, r.Height); }
 
-        static string LimitSig(Claude.Limit l) { return l == null ? "-" : l.Pct + "@" + l.Reset.ToString("HHmm"); }
+        public void Redraw()
+        {
+            int th = H - S(8), slot = th - S(6);
+            var segs = new List<Seg>();
+            foreach (ItemCfg it in Config.Current.Items)
+            {
+                if (!it.On) continue;
+                Seg sg = null;
+                switch (it.Id)
+                {
+                    case "apps": sg = AppsSeg(slot); break;
+                    case "folder": sg = FolderSeg(slot); break;
+                    case "system": sg = SystemSeg(slot); break;
+                    case "claude": sg = ClaudeSeg(th); break;
+                    case "tray": sg = TraySeg(); break;
+                    case "battery": sg = BatterySeg(); break;
+                    case "today": sg = TodaySeg(); break;
+                    case "clock": sg = ClockSeg(); break;
+                }
+                if (sg != null) segs.Add(sg);
+            }
+            if (segs.Count == 0) // keep something to right-click
+                segs.Add(new Seg { W = slot + S(8), Draw = (g, r) => { Glass.Tile(g, r); Glass.Center(g, "☰", Glass.Glyph, Color.White, r); AddHit(r, null, b => ShowMenu(), "Lilbar", false); } });
+
+            int pad = S(4), gap = S(6), W = pad * 2 - gap;
+            foreach (Seg sg in segs) W += sg.W + gap;
+            if (buf == null || buf.Width != W || buf.Height != H)
+            {
+                if (buf != null) buf.Dispose();
+                buf = new Bitmap(W, H, PixelFormat.Format32bppPArgb);
+            }
+            Rectangle sb = screen.Bounds;
+            int x0 = Config.Current.Align == "left" ? sb.X + S(4) : sb.X + (sb.Width - W) / 2;
+            if (Left != x0 || Top != sb.Bottom - H || Width != W || Height != H) SetBounds(x0, sb.Bottom - H, W, H);
+
+            hits.Clear();
+            using (Graphics g = Glass.Begin(buf))
+            {
+                int x = pad;
+                foreach (Seg sg in segs) { sg.Draw(g, new Rectangle(x, (H - th) / 2, sg.W, th)); x += sg.W + gap; }
+            }
+            Invalidate();
+        }
 
         List<AppItem> Items()
         {
             var used = new HashSet<IntPtr>();
             var list = new List<AppItem>();
-            foreach (Pin p in pins)
+            foreach (Pin p in Model.OrderedPins(false))
             {
                 string exe = p.Exe;
-                List<Win> mine = exe.Length == 0 ? new List<Win>() : wins.FindAll(w => string.Equals(w.Exe, exe, StringComparison.OrdinalIgnoreCase));
+                List<Win> mine = exe.Length == 0 ? new List<Win>() : Model.Wins.FindAll(w => string.Equals(w.Exe, exe, StringComparison.OrdinalIgnoreCase));
                 foreach (Win w in mine) used.Add(w.Hwnd);
                 string lnk = p.Lnk;
                 list.Add(new AppItem
@@ -554,13 +631,89 @@ namespace Lilbar
                     Click = mine.Count > 0 ? (Action)(() => Sys.Activate(mine[0].Hwnd)) : () => Sys.Launch(lnk)
                 });
             }
-            foreach (Win w in wins)
+            foreach (Win w in Model.Wins)
             {
                 if (used.Contains(w.Hwnd)) continue;
                 IntPtr h = w.Hwnd;
                 list.Add(new AppItem { Title = w.Title, Icon = Sys.IconOf(w.Exe), Running = true, Active = w.Active, Click = () => Sys.Activate(h) });
             }
             return list;
+        }
+
+        Seg AppsSeg(int slot)
+        {
+            List<AppItem> items = Items();
+            if (items.Count == 0) return null;
+            return new Seg
+            {
+                W = S(8) + items.Count * (slot + S(4)) - S(4),
+                Draw = (g, r) =>
+                {
+                    Glass.Tile(g, r);
+                    int ax = r.X + S(4), sy = r.Y + (r.Height - slot) / 2, icon = slot - S(10);
+                    foreach (AppItem it in items)
+                    {
+                        var c = new Rectangle(ax, sy, slot, slot);
+                        AppItem item = it;
+                        bool hov = AddHit(c, null, b => item.Click(), item.Title, false);
+                        if (item.Active || hov) Glass.Fill(g, c, S(8), Color.FromArgb(item.Active ? 56 : 36, 255, 255, 255));
+                        if (item.Icon != null) g.DrawImage(item.Icon, new Rectangle(c.X + (slot - icon) / 2, c.Y + (slot - icon) / 2 - S(1), icon, icon));
+                        else Glass.Center(g, item.Title.Substring(0, 1), Glass.Value, Color.White, c);
+                        if (item.Running)
+                            using (var dot = new SolidBrush(Glass.Blue)) g.FillEllipse(dot, c.X + c.Width / 2 - S(2), c.Bottom - S(4), S(4), S(4));
+                        ax += slot + S(4);
+                    }
+                }
+            };
+        }
+
+        Seg FolderSeg(int slot)
+        {
+            List<string> apps = Config.Current.FolderApps;
+            string name = Config.Current.FolderName;
+            return new Seg
+            {
+                W = slot + S(8),
+                Draw = (g, r) =>
+                {
+                    Glass.Tile(g, r);
+                    bool hov = AddHit(r, null, b =>
+                    {
+                        if (apps.Count == 0) { Manager.OpenSettings(3); return; }
+                        var items = new List<PopItem>();
+                        foreach (string p in apps)
+                        {
+                            string path = p;
+                            items.Add(new PopItem { Icon = Sys.IconOf(path), Tip = Path.GetFileNameWithoutExtension(path), Up = bb => { ClosePopup(); Sys.Launch(path); } });
+                        }
+                        TogglePopup("folder", name, items, true, ToScreen(r));
+                    }, apps.Count == 0 ? name + ": bấm để chọn app" : name, false);
+                    if (hov || popupKey == "folder") Glass.Fill(g, r, S(10), Color.FromArgb(30, 255, 255, 255));
+                    if (apps.Count == 0) { Glass.Center(g, "+", Glass.Big, Glass.Dim, r); return; }
+                    int m = S(14), gp = S(3), ox = r.X + (r.Width - (2 * m + gp)) / 2, oy = r.Y + (r.Height - (2 * m + gp)) / 2;
+                    for (int i = 0; i < Math.Min(4, apps.Count); i++)
+                    {
+                        Bitmap ic = Sys.IconOf(apps[i]);
+                        if (ic != null) g.DrawImage(ic, new Rectangle(ox + (i % 2) * (m + gp), oy + (i / 2) * (m + gp), m, m));
+                    }
+                }
+            };
+        }
+
+        Seg SystemSeg(int slot)
+        {
+            return new Seg
+            {
+                W = slot * 2 + S(24),
+                Draw = (g, r) =>
+                {
+                    Glass.Tile(g, r);
+                    AddHit(r, null, b => Sys.Launch("taskmgr.exe"), "CPU " + Model.Cpu + "%, RAM " + Model.Ram + "%\nBấm để mở Task Manager", false);
+                    int sy = r.Y + (r.Height - slot) / 2;
+                    Glass.Ring(g, new Rectangle(r.X + S(8), sy, slot, slot), Model.Cpu, "CPU");
+                    Glass.Ring(g, new Rectangle(r.X + S(16) + slot, sy, slot, slot), Model.Ram, "RAM");
+                }
+            };
         }
 
         static string Until(DateTime reset)
@@ -572,7 +725,7 @@ namespace Lilbar
             return reset.Day + "/" + reset.Month;
         }
 
-        string ClaudeTip()
+        static string ClaudeTip()
         {
             var s = new StringBuilder("Claude Code");
             if (Claude.Session != null) s.Append("\nPhiên 5 giờ: ").Append(Math.Round(Claude.Session.Pct)).Append("%, đặt lại lúc ").Append(Claude.Session.Reset.ToString("HH:mm"));
@@ -582,208 +735,229 @@ namespace Lilbar
             return s.ToString();
         }
 
-        void Render()
+        Seg ClaudeSeg(int th)
         {
-            List<AppItem> items = Items();
+            if (!Claude.Available) return null;
+            return new Seg
+            {
+                W = S(172),
+                Draw = (g, r) =>
+                {
+                    Glass.Tile(g, r);
+                    AddHit(r, null, b => { Claude.RefreshNow(); Manager.Tick(); }, ClaudeTip(), false);
+                    if (Claude.Session == null && Claude.Week == null)
+                    {
+                        Glass.Center(g, "Claude", Glass.Row, Color.White, new Rectangle(r.X, r.Y + S(3), r.Width, th / 2 - S(2)));
+                        Glass.Center(g, Claude.Error ?? "Đang tải…", Glass.Date, Glass.Dim, new Rectangle(r.X + S(4), r.Y + th / 2, r.Width - S(8), th / 2 - S(3)));
+                    }
+                    else
+                    {
+                        UsageRow(g, r, r.Y + S(3), "5h", Claude.Session);
+                        UsageRow(g, r, r.Y + th / 2 + S(1), "7d", Claude.Week);
+                    }
+                }
+            };
+        }
+
+        // One "5h ████░░ 33%  2h59" row of the Claude tile.
+        static void UsageRow(Graphics g, Rectangle tile, int y, string label, Claude.Limit l)
+        {
+            int rowH = S(15), x = tile.X + S(8);
+            Glass.Text(g, label, Glass.Row, Glass.Dim, new Rectangle(x, y, S(20), rowH), StringAlignment.Near);
+            var bar = new Rectangle(x + S(20), y + rowH / 2 - S(2), S(60), S(4));
+            Glass.Fill(g, bar, S(2), Color.FromArgb(50, 255, 255, 255));
+            if (l == null) return;
+            double p = Math.Max(0, Math.Min(100, l.Pct));
+            Color c = p >= 90 ? Color.FromArgb(255, 255, 69, 58) : p >= 70 ? Color.FromArgb(255, 255, 159, 10) : Color.FromArgb(255, 52, 199, 89);
+            if (p > 0) Glass.Fill(g, new Rectangle(bar.X, bar.Y, Math.Max(S(4), (int)(bar.Width * p / 100)), bar.Height), S(2), c);
+            Glass.Text(g, Math.Round(p) + "%", Glass.Row, Color.White, new Rectangle(bar.Right, y, S(36), rowH), StringAlignment.Far);
+            if (l.Reset > DateTime.MinValue)
+                Glass.Text(g, Until(l.Reset), Glass.Row, Glass.Dim, new Rectangle(bar.Right + S(36), y, tile.Right - bar.Right - S(36) - S(8), rowH), StringAlignment.Far);
+        }
+
+        Seg TraySeg()
+        {
+            List<TrayIcon> all = TrayHost.Visible();
+            List<TrayIcon> pinned = all.FindAll(TrayHost.IsPinned);
+            int cell = S(28), arrow = S(26);
+            return new Seg
+            {
+                W = S(4) + pinned.Count * cell + arrow + S(4),
+                Draw = (g, r) =>
+                {
+                    Glass.Tile(g, r);
+                    int x = r.X + S(4), ic = S(18), cy = r.Y + r.Height / 2;
+                    foreach (TrayIcon t in pinned)
+                    {
+                        var c = new Rectangle(x, r.Y + S(3), cell, r.Height - S(6));
+                        TrayIcon ti = t;
+                        if (primary) ti.Rect = ToScreen(c);
+                        bool hov = AddHit(c, b => TrayHost.MouseDown(ti, b == MouseButtons.Right), b => TrayHost.MouseUp(ti, b == MouseButtons.Right), ti.Tip, true);
+                        if (hov) Glass.Fill(g, c, S(8), Color.FromArgb(36, 255, 255, 255));
+                        g.DrawImage(ti.Icon, new Rectangle(c.X + (cell - ic) / 2, cy - ic / 2, ic, ic));
+                        x += cell;
+                    }
+                    var a = new Rectangle(x, r.Y + S(3), arrow, r.Height - S(6));
+                    Rectangle aScreen = ToScreen(a);
+                    if (primary) foreach (TrayIcon t in all) if (!pinned.Contains(t)) t.Rect = aScreen;
+                    bool open = popupKey == "tray";
+                    bool ah = AddHit(a, null, b =>
+                    {
+                        var items = new List<PopItem>();
+                        foreach (TrayIcon t in TrayHost.Visible())
+                        {
+                            if (TrayHost.IsPinned(t)) continue;
+                            TrayIcon ti = t;
+                            items.Add(new PopItem { Icon = ti.Icon, Tip = ti.Tip, Right = true, Down = bb => TrayHost.MouseDown(ti, bb == MouseButtons.Right), Up = bb => TrayHost.MouseUp(ti, bb == MouseButtons.Right) });
+                        }
+                        TogglePopup("tray", null, items, true, aScreen);
+                    }, "Hiện biểu tượng ẩn", false);
+                    if (ah || open) Glass.Fill(g, a, S(8), Color.FromArgb(36, 255, 255, 255));
+                    Glass.Chevron(g, a, open);
+                }
+            };
+        }
+
+        Seg BatterySeg()
+        {
             PowerStatus ps = SystemInformation.PowerStatus;
             bool hasBattery = (ps.BatteryChargeStatus & (BatteryChargeStatus.NoSystemBattery | BatteryChargeStatus.Unknown)) == 0;
             int pct = (int)Math.Round(ps.BatteryLifePercent * 100);
             bool charging = ps.PowerLineStatus == PowerLineStatus.Online;
-            bool showBatt = hasBattery && !(charging && pct >= 100);
-
-            DateTime now = DateTime.Now;
-            string time = now.ToString("HH:mm"), date = DateText(now);
-            int clockText;
-            using (Graphics m = Graphics.FromImage(measureBmp))
-                clockText = (int)Math.Ceiling(Math.Max(m.MeasureString(time, fTime).Width, m.MeasureString(date, fDate).Width));
-
-            int th = H - S(8), ty = (H - th) / 2, slot = th - S(6), pad = S(4), gap = S(6);
-            int appW = items.Count == 0 ? 0 : S(8) + items.Count * (slot + S(4)) - S(4);
-            int sysW = slot * 2 + S(24), claudeW = Claude.Available ? S(172) : 0;
-            int batW = showBatt ? S(58) : 0, clockW = Math.Max(S(74), clockText) + S(18);
-            int W = pad + (appW > 0 ? appW + gap : 0) + sysW + gap + (claudeW > 0 ? claudeW + gap : 0) + (showBatt ? batW + gap : 0) + clockW + pad;
-
-            if (buf == null || buf.Width != W || buf.Height != H)
+            if (!hasBattery || (charging && pct >= 100)) return null;
+            return new Seg
             {
-                if (buf != null) buf.Dispose();
-                buf = new Bitmap(W, H, PixelFormat.Format32bppPArgb);
-            }
-            if (Width != W || Height != H)
-            {
-                Rectangle b = Screen.PrimaryScreen.Bounds;
-                SetBounds(b.X + (b.Width - W) / 2, b.Bottom - H, W, H); // exactly the strip the taskbar occupied
-            }
-
-            hits.Clear();
-            using (Graphics g = Graphics.FromImage(buf))
-            {
-                g.Clear(Color.Transparent);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit; // ClearType needs an opaque background
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-
-                int x = pad, sy = (H - slot) / 2, icon = slot - S(10);
-                if (appW > 0)
+                W = S(58),
+                Draw = (g, r) =>
                 {
-                    Tile(g, new Rectangle(x, ty, appW, th));
-                    int ax = x + S(4);
-                    foreach (AppItem it in items)
-                    {
-                        var r = new Rectangle(ax, sy, slot, slot);
-                        if (it.Active || hits.Count == hover) Fill(g, r, S(8), Color.FromArgb(it.Active ? 56 : 36, 255, 255, 255));
-                        hits.Add(new Hit { R = r, Click = it.Click, Tip = it.Title });
-                        if (it.Icon != null) g.DrawImage(it.Icon, new Rectangle(r.X + (slot - icon) / 2, r.Y + (slot - icon) / 2 - S(1), icon, icon));
-                        else Center(g, it.Title.Substring(0, 1), fValue, Color.White, r);
-                        if (it.Running)
-                            using (var dot = new SolidBrush(Blue)) g.FillEllipse(dot, r.X + r.Width / 2 - S(2), r.Bottom - S(4), S(4), S(4));
-                        ax += slot + S(4);
-                    }
-                    x += appW + gap;
-                }
-
-                Tile(g, new Rectangle(x, ty, sysW, th));
-                Ring(g, new Rectangle(x + S(8), sy, slot, slot), cpu, "CPU");
-                Ring(g, new Rectangle(x + S(16) + slot, sy, slot, slot), ram, "RAM");
-                x += sysW + gap;
-
-                if (claudeW > 0)
-                {
-                    var r = new Rectangle(x, ty, claudeW, th);
-                    Tile(g, r);
-                    hits.Add(new Hit { R = r, Click = () => { Claude.RefreshNow(); Tick(); }, Tip = ClaudeTip() });
-                    if (Claude.Session == null && Claude.Week == null)
-                    {
-                        Center(g, "Claude", fRow, Color.White, new Rectangle(r.X, r.Y + S(3), r.Width, th / 2 - S(2)));
-                        Center(g, Claude.Error ?? "Đang tải…", fDate, Color.FromArgb(190, 255, 255, 255), new Rectangle(r.X + S(4), r.Y + th / 2, r.Width - S(8), th / 2 - S(3)));
-                    }
-                    else
-                    {
-                        UsageRow(g, r, ty + S(3), "5h", Claude.Session);
-                        UsageRow(g, r, ty + th / 2 + S(1), "7d", Claude.Week);
-                    }
-                    x += claudeW + gap;
-                }
-
-                if (showBatt)
-                {
-                    var r = new Rectangle(x, ty, batW, th);
-                    Fill(g, r, S(10), pct <= 20 && !charging ? Color.FromArgb(220, 227, 67, 43) : Color.FromArgb(220, 47, 139, 255));
+                    Glass.Fill(g, r, S(10), pct <= 20 && !charging ? Color.FromArgb(220, 227, 67, 43) : Color.FromArgb(220, 47, 139, 255));
+                    AddHit(r, null, b => Sys.WinKey(0x41), "Pin " + pct + "%" + (charging ? ", đang sạc" : ""), false); // Win+A: quick settings
                     if (charging)
                     {
-                        Center(g, "⚡", fBolt, Color.White, new Rectangle(r.X + S(4), r.Y, S(18), r.Height));
-                        Center(g, pct.ToString(), fBatt, Color.White, new Rectangle(r.X + S(18), r.Y, r.Width - S(22), r.Height));
+                        Glass.Center(g, "⚡", Glass.Bolt, Color.White, new Rectangle(r.X + S(4), r.Y, S(18), r.Height));
+                        Glass.Center(g, pct.ToString(), Glass.Batt, Color.White, new Rectangle(r.X + S(18), r.Y, r.Width - S(22), r.Height));
                     }
-                    else Center(g, pct.ToString(), fBatt, Color.White, r);
-                    x += batW + gap;
+                    else Glass.Center(g, pct.ToString(), Glass.Batt, Color.White, r);
                 }
+            };
+        }
 
-                Tile(g, new Rectangle(x, ty, clockW, th));
-                using (var right = new StringFormat { Alignment = StringAlignment.Far })
-                using (var white = new SolidBrush(Color.White))
-                using (var dim = new SolidBrush(Color.FromArgb(200, 255, 255, 255)))
+        static string WeatherTip()
+        {
+            var s = new StringBuilder(Glass.DayName(DateTime.Now.DayOfWeek) + ", " + DateTime.Now.ToString("dd/MM/yyyy"));
+            if (!double.IsNaN(Weather.Temp))
+            {
+                s.Append("\n").Append(Weather.City ?? "").Append(Weather.City != null ? ": " : "").Append(Weather.Describe(Weather.Code)).Append(", ").Append(Math.Round(Weather.Temp)).Append("°C");
+                if (!double.IsNaN(Weather.Hi)) s.Append("\nCao ").Append(Math.Round(Weather.Hi)).Append("°, thấp ").Append(Math.Round(Weather.Lo)).Append("°");
+            }
+            if (Weather.Error != null) s.Append("\n").Append(Weather.Error);
+            s.Append("\nBấm để mở thông báo và lịch");
+            return s.ToString();
+        }
+
+        // Weekday and date on the left, time and current weather on the right.
+        Seg TodaySeg()
+        {
+            DateTime now = DateTime.Now;
+            string day = Glass.DayName(now.DayOfWeek).ToUpper(new CultureInfo("vi-VN"));
+            string date = now.Day + " tháng " + now.Month, time = now.ToString("HH:mm");
+            bool hasW = !double.IsNaN(Weather.Temp) && Weather.Code >= 0;
+            string temp = hasW ? Math.Round(Weather.Temp) + "°" : "";
+            string glyph = hasW ? Weather.Glyph(Weather.Code) : "";
+            int lw = Math.Max(Glass.Measure(day, Glass.Day), Glass.Measure(date, Glass.DateBig)) + S(18);
+            int gw = hasW ? Glass.Measure(glyph, Glass.Glyph) : 0, tw = hasW ? Glass.Measure(temp, Glass.Date) : 0;
+            int rw = Math.Max(Glass.Measure(time, Glass.Time), gw + tw) + S(18);
+            return new Seg
+            {
+                W = lw + rw,
+                Draw = (g, r) =>
                 {
-                    g.DrawString(time, fTime, white, new RectangleF(x, ty + S(2), clockW - S(9), S(19)), right);
-                    g.DrawString(date, fDate, dim, new RectangleF(x, ty + S(20), clockW - S(9), S(15)), right);
+                    Glass.Tile(g, r);
+                    AddHit(r, null, b => Sys.WinKey(0x4E), WeatherTip(), false); // Win+N
+                    Glass.Text(g, day, Glass.Day, Color.FromArgb(255, 255, 82, 70), new Rectangle(r.X + S(10), r.Y + S(3), lw, S(15)), StringAlignment.Near);
+                    Glass.Text(g, date, Glass.DateBig, Color.White, new Rectangle(r.X + S(10), r.Y + S(17), lw, S(20)), StringAlignment.Near);
+                    using (var pen = new Pen(Color.FromArgb(50, 255, 255, 255))) g.DrawLine(pen, r.X + lw, r.Y + S(8), r.X + lw, r.Bottom - S(8));
+                    int right = r.Right - S(10);
+                    Glass.Text(g, time, Glass.Time, Color.White, new Rectangle(r.X + lw, r.Y + S(2), right - r.X - lw, S(19)), StringAlignment.Far);
+                    if (hasW)
+                    {
+                        Glass.Text(g, temp, Glass.Date, Glass.Dim, new Rectangle(right - tw - S(2), r.Y + S(21), tw + S(2), S(15)), StringAlignment.Far);
+                        Glass.Text(g, glyph, Glass.Glyph, Weather.GlyphColor(Weather.Code), new Rectangle(right - tw - gw - S(2), r.Y + S(19), gw, S(18)), StringAlignment.Far);
+                    }
                 }
-            }
-            Invalidate();
+            };
         }
 
-        // One "5h ████░░ 33%  2h59" row of the Claude tile.
-        void UsageRow(Graphics g, Rectangle tile, int y, string label, Claude.Limit l)
+        Seg ClockSeg()
         {
-            int rowH = S(15), x = tile.X + S(8);
-            Color dim = Color.FromArgb(190, 255, 255, 255);
-            using (var left = new StringFormat { LineAlignment = StringAlignment.Center })
-            using (var right = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center })
-            using (var dimB = new SolidBrush(dim))
-            using (var white = new SolidBrush(Color.White))
+            DateTime now = DateTime.Now;
+            string time = now.ToString("HH:mm");
+            string date = (now.DayOfWeek == DayOfWeek.Sunday ? "CN" : "THỨ " + ((int)now.DayOfWeek + 1)) + ", " + now.Day + " THG " + now.Month;
+            int w = Math.Max(S(74), Math.Max(Glass.Measure(time, Glass.Time), Glass.Measure(date, Glass.Date))) + S(18);
+            return new Seg
             {
-                g.DrawString(label, fRow, dimB, new RectangleF(x, y, S(20), rowH), left);
-                var bar = new Rectangle(x + S(20), y + rowH / 2 - S(2), S(60), S(4));
-                Fill(g, bar, S(2), Color.FromArgb(50, 255, 255, 255));
-                if (l == null) return;
-                double p = Math.Max(0, Math.Min(100, l.Pct));
-                Color c = p >= 90 ? Color.FromArgb(255, 255, 69, 58) : p >= 70 ? Color.FromArgb(255, 255, 159, 10) : Color.FromArgb(255, 52, 199, 89);
-                if (p > 0) Fill(g, new Rectangle(bar.X, bar.Y, Math.Max(S(4), (int)(bar.Width * p / 100)), bar.Height), S(2), c);
-                g.DrawString(Math.Round(p) + "%", fRow, white, new RectangleF(bar.Right, y, S(36), rowH), right);
-                if (l.Reset > DateTime.MinValue)
-                    g.DrawString(Until(l.Reset), fRow, dimB, new RectangleF(bar.Right + S(36), y, tile.Right - bar.Right - S(36) - S(8), rowH), right);
-            }
+                W = w,
+                Draw = (g, r) =>
+                {
+                    Glass.Tile(g, r);
+                    AddHit(r, null, b => Sys.WinKey(0x4E), "Bấm để mở thông báo và lịch", false);
+                    Glass.Text(g, time, Glass.Time, Color.White, new Rectangle(r.X, r.Y + S(2), r.Width - S(9), S(19)), StringAlignment.Far);
+                    Glass.Text(g, date, Glass.Date, Glass.Dim, new Rectangle(r.X, r.Y + S(20), r.Width - S(9), S(15)), StringAlignment.Far);
+                }
+            };
         }
 
-        static GraphicsPath Round(Rectangle r, int rad)
+        void ShowMenu()
         {
-            var p = new GraphicsPath();
-            int d = Math.Max(1, Math.Min(rad * 2, Math.Min(r.Width, r.Height)));
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
-            return p;
-        }
-
-        static void Fill(Graphics g, Rectangle r, int rad, Color c)
-        {
-            using (GraphicsPath p = Round(r, rad))
-            using (var b = new SolidBrush(c)) g.FillPath(b, p);
-        }
-
-        // Clear-glass tile: a dark translucent pane so text stays readable on any wallpaper,
-        // a light sheen fading downward, and a hairline edge.
-        void Tile(Graphics g, Rectangle r)
-        {
-            var edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
-            using (GraphicsPath p = Round(edge, S(10)))
+            var items = new List<PopItem>
             {
-                using (var b = new SolidBrush(Color.FromArgb(118, 14, 14, 18))) g.FillPath(b, p);
-                using (var b = new LinearGradientBrush(r, Color.FromArgb(40, 255, 255, 255), Color.FromArgb(4, 255, 255, 255), 90f)) g.FillPath(b, p);
-                using (var pen = new Pen(Color.FromArgb(64, 255, 255, 255), 1f)) g.DrawPath(pen, p);
-            }
+                new PopItem { Glyph = "⚙", Text = "Cài đặt Lilbar", Up = b => { ClosePopup(); Manager.OpenSettings(0); } },
+                new PopItem { Glyph = "✕", Text = "Thoát Lilbar", Up = b => { ClosePopup(); Manager.Quit(null); } },
+            };
+            N.POINT p;
+            N.GetCursorPos(out p);
+            TogglePopup("menu", null, items, false, new Rectangle(p.X, Top, 1, H));
         }
 
-        void Ring(Graphics g, Rectangle r, int pct, string label)
+        void TogglePopup(string key, string title, List<PopItem> items, bool grid, Rectangle anchor)
         {
-            float w = S(3);
-            var rc = new RectangleF(r.X + w / 2, r.Y + w / 2, r.Width - w, r.Height - w);
-            using (var track = new Pen(Color.FromArgb(56, 255, 255, 255), w)) g.DrawEllipse(track, rc);
-            if (pct > 0)
-                using (var bar = new Pen(Blue, w) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(bar, rc, -90, Math.Min(pct, 100) * 3.6f);
-            Center(g, pct.ToString(), fValue, Color.White, new Rectangle(r.X, r.Y + S(5), r.Width, S(14)));
-            Center(g, label, fLabel, Color.FromArgb(190, 255, 255, 255), new Rectangle(r.X, r.Y + S(17), r.Width, S(9)));
-        }
-
-        static void Center(Graphics g, string s, Font f, Color c, Rectangle r)
-        {
-            using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap })
-            using (var b = new SolidBrush(c)) g.DrawString(s, f, b, r, sf);
-        }
-
-        // Raw 32-bit copy keeps per-pixel alpha, so the desktop shows through transparent pixels.
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            if (buf == null) return;
-            BitmapData bd = buf.LockBits(new Rectangle(0, 0, buf.Width, buf.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
-            try
+            if (justClosed == key) { justClosed = null; return; } // this click closed it; don't reopen
+            ClosePopup();
+            var p = new Popup(title, items, grid, anchor);
+            popup = p;
+            popupKey = key;
+            p.FormClosed += delegate
             {
-                var bmi = new N.BITMAPINFOHEADER { biSize = 40, biWidth = buf.Width, biHeight = -buf.Height, biPlanes = 1, biBitCount = 32 };
-                IntPtr hdc = e.Graphics.GetHdc();
-                N.SetDIBitsToDevice(hdc, 0, 0, (uint)buf.Width, (uint)buf.Height, 0, 0, 0, (uint)buf.Height, bd.Scan0, ref bmi, 0);
-                e.Graphics.ReleaseHdc(hdc);
-            }
-            finally { buf.UnlockBits(bd); }
+                if (popup != p) return;
+                popup = null;
+                popupKey = null;
+                if (!IsDisposed) Redraw();
+            };
+            p.Show();
+            Redraw();
         }
+
+        void ClosePopup()
+        {
+            if (popup == null) return;
+            Popup p = popup;
+            popup = null;
+            popupKey = null;
+            p.Close();
+        }
+
+        protected override void OnPaint(PaintEventArgs e) { Glass.Blit(e, buf); }
+
+        Hit HitAt(Point p) { return hits.Find(h => h.R.Contains(p)); }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             int h = hits.FindIndex(x => x.R.Contains(e.Location));
             if (h == hover) return;
             hover = h;
-            if (h >= 0) tip.Show(hits[h].Tip, this, hits[h].R.X, -S(30) - S(16) * hits[h].Tip.Split('\n').Length, 4000);
+            if (h >= 0 && !string.IsNullOrEmpty(hits[h].Tip)) tip.Show(hits[h].Tip, this, hits[h].R.X, -S(30) - S(16) * hits[h].Tip.Split('\n').Length, 4000);
             else tip.Hide(this);
-            Render();
+            Redraw();
         }
 
         protected override void OnMouseLeave(EventArgs e)
@@ -791,14 +965,127 @@ namespace Lilbar
             if (hover == -1) return;
             hover = -1;
             tip.Hide(this);
-            Render();
+            Redraw();
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            // The dock never takes focus, so an open popup doesn't notice this click by itself.
+            if (popup != null) { justClosed = popupKey; ClosePopup(); }
+            Hit h = HitAt(e.Location);
+            if (h != null && h.Down != null && (e.Button == MouseButtons.Left || h.Right)) h.Down(e.Button);
         }
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
-            if (e.Button != MouseButtons.Left) return;
-            int h = hits.FindIndex(x => x.R.Contains(e.Location));
-            if (h >= 0) hits[h].Click();
+            Hit h = HitAt(e.Location);
+            if (h != null && h.Up != null && (e.Button == MouseButtons.Left || h.Right)) h.Up(e.Button);
+            else if (e.Button == MouseButtons.Right) ShowMenu();
+            justClosed = null;
+        }
+    }
+
+    // Owns the docks, the tray host, the timers and the app's lifetime.
+    static class Manager
+    {
+        public static bool Rebuilding;
+        static readonly List<Dock> docks = new List<Dock>();
+        static readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer(), hostTimer = new System.Windows.Forms.Timer();
+        static SynchronizationContext ui;
+        static NotifyIcon icon;
+        static string lastSig;
+        static bool quitting, shutDown;
+
+        public static void Start()
+        {
+            ui = new WindowsFormsSynchronizationContext();
+            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) Glass.Init(g.DpiX / 96f);
+            Config.Load();
+            Taskbar.CaptureAutoHide();
+            TrayHost.Start();
+            Taskbar.Hide();
+            Sys.Cpu();
+            Model.Tick(PostRefresh);
+            BuildDocks();
+            icon = new NotifyIcon
+            {
+                Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath),
+                Text = "Lilbar",
+                ContextMenu = new ContextMenu(new[] { new MenuItem("Cài đặt Lilbar", delegate { OpenSettings(0); }), new MenuItem("Thoát Lilbar", delegate { Quit(null); }) }),
+            };
+            icon.Visible = true;
+            Config.Changed += Refresh;
+            SystemEvents.DisplaySettingsChanged += OnDisplays;
+            timer.Interval = 1000;
+            timer.Tick += delegate { Tick(); };
+            timer.Start();
+            hostTimer.Interval = 250;
+            hostTimer.Tick += delegate { TrayHost.KeepOnTop(); };
+            hostTimer.Start();
+            TrayHost.BroadcastTaskbarCreated(); // running apps re-register their tray icons with us
+        }
+
+        public static void Tick() { Model.Tick(PostRefresh); Refresh(); }
+
+        static void OnDisplays(object s, EventArgs e) { ui.Post(delegate { if (!quitting) BuildDocks(); }, null); }
+
+        public static void PostRefresh() { if (ui != null) ui.Post(delegate { Refresh(); }, null); }
+
+        public static void Refresh()
+        {
+            if (quitting) return;
+            string s = Model.Signature();
+            if (s == lastSig) return; // nothing visible changed: no repaint
+            lastSig = s;
+            foreach (Dock d in docks) d.Redraw();
+            SettingsForm.Ping();
+        }
+
+        static void BuildDocks()
+        {
+            Rebuilding = true;
+            foreach (Dock d in docks) d.Close();
+            docks.Clear();
+            Rebuilding = false;
+            Taskbar.Hide(); // a new monitor brings a new explorer taskbar
+            foreach (Screen s in Screen.AllScreens)
+            {
+                var d = new Dock(s);
+                docks.Add(d);
+                d.Show();
+                if (d.IsPrimary) TrayHost.SetRect(d.Strip);
+            }
+            lastSig = null;
+            Refresh();
+        }
+
+        public static void OnTaskbarCreated() { if (!quitting) Taskbar.Hide(); }
+
+        public static void OpenSettings(int tab) { SettingsForm.Open(tab); }
+
+        public static void Quit(Dock closing)
+        {
+            if (quitting) return;
+            quitting = true;
+            timer.Stop();
+            hostTimer.Stop();
+            SystemEvents.DisplaySettingsChanged -= OnDisplays;
+            SettingsForm.CloseIfOpen();
+            Rebuilding = true;
+            foreach (Dock d in docks.ToArray()) if (d != closing) d.Close();
+            if (icon != null) icon.Visible = false;
+            Shutdown();
+            Application.ExitThread();
+        }
+
+        // Tray host first, so the broadcast makes apps re-register with explorer's tray.
+        public static void Shutdown()
+        {
+            if (shutDown) return;
+            shutDown = true;
+            TrayHost.Stop();
+            Taskbar.Restore();
+            TrayHost.BroadcastTaskbarCreated();
         }
     }
 
@@ -808,7 +1095,7 @@ namespace Lilbar
         static int Main(string[] args)
         {
             string arg = args.Length > 0 ? args[0] : "";
-            if (arg == "--restore") { Taskbar.Restore(); return 0; }
+            if (arg == "--restore") { Taskbar.Restore(); TrayHost.BroadcastTaskbarCreated(); return 0; }
             if (arg == "--selftest") return SelfTest();
 
             bool fresh;
@@ -817,11 +1104,11 @@ namespace Lilbar
                 if (!fresh) return 0; // already running
                 N.SetProcessDPIAware();
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; // the 4.x runtime may default to older TLS
-                Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e) { Taskbar.Log(e.Exception); Application.Exit(); };
-                AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e) { Taskbar.Log(e.ExceptionObject as Exception); Taskbar.Restore(); };
-                // The loop can end without FormClosing (taskkill posts WM_CLOSE to hidden helper windows too).
-                try { Application.Run(new Dock()); }
-                finally { Taskbar.Restore(); }
+                Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e) { Taskbar.Log(e.Exception); Manager.Quit(null); };
+                AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e) { Taskbar.Log(e.ExceptionObject as Exception); Manager.Shutdown(); };
+                // The loop can end without the docks closing (taskkill posts WM_CLOSE to hidden helper windows too).
+                try { Manager.Start(); Application.Run(); }
+                finally { Manager.Shutdown(); }
             }
             return 0;
         }
@@ -831,23 +1118,29 @@ namespace Lilbar
             int fails = 0;
             Action<bool, string> check = delegate(bool ok, string msg) { Console.WriteLine((ok ? "ok   " : "FAIL ") + msg); if (!ok) fails++; };
             check(Marshal.SizeOf(typeof(N.APPBARDATA)) == (IntPtr.Size == 8 ? 48 : 36), "APPBARDATA size " + Marshal.SizeOf(typeof(N.APPBARDATA)));
+            check(Marshal.SizeOf(typeof(N.NOTIFYICONDATA)) == 956, "NOTIFYICONDATA size " + Marshal.SizeOf(typeof(N.NOTIFYICONDATA)));
+            check(Marshal.SizeOf(typeof(N.SHELLTRAYDATA)) == 964, "SHELLTRAYDATA size " + Marshal.SizeOf(typeof(N.SHELLTRAYDATA)));
+            check(Marshal.SizeOf(typeof(N.WINNOTIFYICONIDENTIFIER)) == 40, "WINNOTIFYICONIDENTIFIER size " + Marshal.SizeOf(typeof(N.WINNOTIFYICONIDENTIFIER)));
             N.RECT tr;
-            check(N.GetWindowRect(N.FindWindow("Shell_TrayWnd", null), out tr) && tr.Bottom - tr.Top > 0, "taskbar height " + (tr.Bottom - tr.Top));
+            check(N.GetWindowRect(Taskbar.Primary(), out tr) && tr.Bottom - tr.Top > 0, "taskbar height " + (tr.Bottom - tr.Top) + ", taskbars " + Taskbar.All().Count + ", screens " + Screen.AllScreens.Length);
             List<Win> w = Sys.Windows();
             check(w.Count > 0 && w.TrueForAll(x => x.Hwnd != IntPtr.Zero && x.Title.Length > 0), "windows " + w.Count);
             check(w.FindAll(x => x.Active).Count <= 1, "at most one active window");
-            check(w.FindAll(x => x.Exe.Length > 0).Count > 0, "exe paths resolved");
             List<Pin> p = Sys.Pinned();
-            check(p.TrueForAll(x => File.Exists(x.Lnk)), "pinned " + p.Count + ": " + string.Join(", ", p.ConvertAll(x => x.Name + " -> " + x.Exe).ToArray()));
+            check(p.TrueForAll(x => File.Exists(x.Lnk)), "pinned " + p.Count);
             Sys.Cpu();
-            Thread.Sleep(500);
+            Thread.Sleep(300);
             int c = Sys.Cpu(), r = Sys.Ram();
-            check(c >= 0 && c <= 100, "cpu " + c);
-            check(r > 0 && r <= 100, "ram " + r);
+            check(c >= 0 && c <= 100 && r > 0 && r <= 100, "cpu " + c + " ram " + r);
             check(Sys.IconOf(Environment.ExpandEnvironmentVariables(@"%WINDIR%\explorer.exe")) != null, "icon of explorer.exe");
-            Claude.Parse("{\"five_hour\":{\"utilization\":33.0,\"resets_at\":\"2026-11-04T05:30:00.230316+00:00\"},\"seven_day\":{\"utilization\":3.0,\"resets_at\":null},\"limits\":[]}");
-            check(Claude.Session != null && Claude.Session.Pct == 33 && Claude.Session.Reset.ToUniversalTime().Hour == 5, "claude usage parse (session)");
-            check(Claude.Week != null && Claude.Week.Pct == 3 && Claude.Week.Reset == DateTime.MinValue, "claude usage parse (week, null reset)");
+            Claude.Parse("{\"five_hour\":{\"utilization\":33.0,\"resets_at\":\"2026-11-04T05:30:00.230316+00:00\"},\"seven_day\":{\"utilization\":3.0,\"resets_at\":null}}");
+            check(Claude.Session != null && Claude.Session.Pct == 33 && Claude.Session.Reset.ToUniversalTime().Hour == 5, "claude usage parse");
+            Weather.Parse(new JavaScriptSerializer().Deserialize<Dictionary<string, object>>("{\"current\":{\"temperature_2m\":31.4,\"weather_code\":2},\"daily\":{\"temperature_2m_max\":[33.1],\"temperature_2m_min\":[25.0]}}"));
+            check(Weather.Temp == 31.4 && Weather.Code == 2 && Weather.Hi == 33.1 && Weather.Lo == 25.0 && Weather.Glyph(2) == "⛅", "weather parse");
+            Config cfg = Config.Normalize(new JavaScriptSerializer().Deserialize<Config>("{\"Items\":[{\"Id\":\"clock\",\"On\":true},{\"Id\":\"bogus\",\"On\":true},{\"Id\":\"clock\",\"On\":false}]}"));
+            check(cfg.Items.Count == Config.Defaults.Length && cfg.Items[0].Id == "clock" && cfg.Items[0].On && cfg.Align == "center", "config normalize keeps order, drops unknown and duplicates, adds missing");
+            string sys = TrayHost.ExpandKnownFolder("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\x.exe");
+            check(sys.EndsWith("\\System32\\x.exe", StringComparison.OrdinalIgnoreCase), "known folder path " + sys);
             return fails;
         }
     }

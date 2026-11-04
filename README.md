@@ -1,8 +1,17 @@
 # Lilbar
 
-A lightweight clear-glass dock that replaces the Windows 11 taskbar: pinned apps, open windows, CPU/RAM rings, Claude Code usage limits, battery and clock, in the same strip the taskbar used. The Windows key still opens Start, and the old taskbar stays hidden.
+A lightweight clear-glass dock that replaces the Windows 11 taskbar on every monitor, in the same strip the taskbar used. The Windows key still opens Start, and the old taskbar stays hidden.
 
-One small exe, one process, about 50 MB of RAM. No install, no dependencies.
+- Pinned apps and open windows.
+- The notification area: apps you pinned sit next to an up-arrow, the rest open from it, clicks and right-click menus work as on the real taskbar.
+- Today tile with weekday, date, time and current weather.
+- A folder tile that opens a group of apps you choose.
+- CPU/RAM rings, Claude Code usage limits, battery, clock.
+- Right-click the dock for Settings: turn tiles on or off, reorder them, reorder or hide pinned apps, choose which tray icons are pinned, edit the folder.
+
+One small exe, one process, about 60 MB of RAM. No install, no dependencies. Settings live in `%APPDATA%\Lilbar\config.json`.
+
+The weather tile sends your IP address to ipinfo.io to find your city, then asks open-meteo.com for the forecast. Turn the tile off in Settings to stop both.
 
 The Claude Code widget reads the sign-in Claude Code already stores in `~/.claude/.credentials.json` and asks `api.anthropic.com` for your 5-hour and weekly limits, at most every 5 minutes. The token never goes anywhere else. If Claude Code isn't installed, the widget doesn't appear.
 
@@ -25,7 +34,7 @@ native\Lilbar.exe --restore
 
 ## Layout
 
-- `native/` — the dock (C#).
+- `native/` — the dock (C#). The notification-area host in `TrayHost.cs` follows [ManagedShell](https://github.com/cairoshell/ManagedShell) (Apache-2.0).
 - `main.js`, `win32.js`, `preload.js`, `index.html` — the earlier Electron prototype.
 - `Project_proposal.md`, `task_board.md`, `Process_phases/` — project notes.
 - `docs/lumabar-reference.md` — feature notes on [lumabar](https://lumabar.xyz), the inspiration. No lumabar code or assets are used.
