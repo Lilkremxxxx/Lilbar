@@ -4,7 +4,7 @@ _Last updated: 2026-11-04 by claude-code_
 
 ## Overview
 - **Topic:** Thanh taskbar/dock thay thế cho Windows 11, có widget, lấy cảm hứng từ lumabar (lumabar.xyz).
-- **Goal:** Một dock riêng (Lilbar) neo cạnh màn hình, ẩn taskbar Windows, có vài widget sống; tự viết, không sao chép lumabar.
+- **Goal:** Widget sống nằm ngay trên taskbar Windows gốc (Lilbar không còn thay taskbar, chế độ thay thế giữ lại làm tuỳ chọn thử nghiệm); tự viết, không sao chép lumabar.
 - **One-liner:** "lumabar tự làm": dock + widget cho Windows.
 
 ## Scope
@@ -90,3 +90,4 @@ Current phase: 02_dock_mvp — see `Process_phases/README.md`.
 | 2026-11-04 | claude-code | pipeline + data | Thay hẳn taskbar (hook giữ ẩn, bỏ auto-hide), cao 48px, nền trong suốt, widget Claude Code đọc token Claude Code và gọi API usage của Anthropic | user: phím Windows bật thanh cũ; muốn fit chiều cao, hiệu ứng clear, widget usage Claude |
 | 2026-11-04 | claude-code | pipeline + data | Thêm 11 widget và tab Tiện ích; build tham chiếu WinMetadata của Windows; dữ liệu mới trong config: Cities, TimerMinutes, FocusMin/BreakMin/LongBreakMin, Todos, GitHubToken (DPAPI); GitHub gửi token tới api.github.com | user: "làm những thứ bạn đề xuất" |
 | 2026-11-04 | claude-code | pipeline + data | Tách thành nhiều file; thêm khay hệ thống (tray host), ô Hôm nay & thời tiết (gửi IP tới ipinfo.io), ô thư mục, menu chuột phải, cửa sổ cài đặt, file cấu hình, dock cho mọi màn hình | user yêu cầu 6 tính năng; 103 widget kiểu lumabar để chờ user chọn |
+| 2026-11-04 | claude-code | topic + scope | Mặc định quay về taskbar Windows gốc; Lilbar là cửa sổ widget do taskbar sở hữu, đặt cạnh khay (hoặc mép trái), tự ẩn khi taskbar ẩn hoặc app toàn màn hình; ô Ứng dụng và Khay không hiện ở chế độ này. Thay hẳn taskbar thành tuỳ chọn thử nghiệm (Config.Replace) | user: "quay về dùng taskbar gốc và app lilbar này sẽ để có những custome widget chạy ngay trên taskbar gốc" |

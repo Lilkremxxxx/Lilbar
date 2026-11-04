@@ -252,6 +252,9 @@ namespace Lilbar
             int right = row.Right - S(12);
             right = Segment(g, row, right, "Trái", Config.Current.Align == "left", () => { Config.Current.Align = "left"; Config.Apply(); });
             Segment(g, row, right, "Giữa", Config.Current.Align != "left", () => { Config.Current.Align = "center"; Config.Apply(); });
+            bool repl = Config.Current.Replace;
+            row = Card(g, x, w, ref y, null, "Thay hẳn taskbar Windows", "Thử nghiệm · tắt thì widget nằm ngay trên taskbar gốc · Lilbar tự khởi động lại");
+            Toggle(g, row, row.Right - S(12), repl, () => { Config.Current.Replace = !repl; Config.Apply(); Startup.Restart(); });
             bool auto = Startup.On;
             row = Card(g, x, w, ref y, null, "Khởi động cùng Windows", "Mở Lilbar khi đăng nhập");
             Toggle(g, row, row.Right - S(12), auto, () => Startup.Set(!auto));

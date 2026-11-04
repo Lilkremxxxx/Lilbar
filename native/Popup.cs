@@ -112,6 +112,7 @@ namespace Lilbar
 
         void Render()
         {
+            if (IsDisposed) return; // a late mouse move after closing must not touch the freed buffers
             if (buf == null || buf.Width != Width || buf.Height != Height)
             {
                 if (buf != null) buf.Dispose();
@@ -181,6 +182,7 @@ namespace Lilbar
             if (anim != null) anim.Dispose();
             if (frame != null) frame.Dispose();
             if (buf != null) buf.Dispose();
+            buf = frame = null;
             base.OnFormClosed(e);
         }
 

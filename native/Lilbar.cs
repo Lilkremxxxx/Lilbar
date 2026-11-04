@@ -164,6 +164,18 @@ namespace Lilbar
         }
 
         // Height of the taskbar on the monitor with these bounds; 0 when that monitor has none.
+        // The explorer taskbar (primary or secondary) on the monitor with these bounds, or zero.
+        public static IntPtr On(Rectangle bounds)
+        {
+            foreach (IntPtr t in All())
+            {
+                N.RECT r;
+                N.GetWindowRect(t, out r);
+                if (bounds.Contains(new Point((r.Left + r.Right) / 2, (r.Top + r.Bottom) / 2))) return t;
+            }
+            return IntPtr.Zero;
+        }
+
         public static int HeightOn(Rectangle bounds)
         {
             foreach (IntPtr t in All())
@@ -675,15 +687,22 @@ namespace Lilbar
 
         static int S(float v) { return Glass.S(v); }
 
+        // Widgets mode (the default): the dock sits over this monitor's Windows taskbar as a window the taskbar owns,
+        // so Windows keeps it right above the taskbar (clicking the taskbar can't cover it, a fullscreen game that
+        // pushes the taskbar down pushes it down too). Zero in the experimental replace mode.
+        readonly IntPtr bar;
+        bool barShown = true;
+
         public Dock(Screen s)
         {
             screen = s;
             primary = s.Primary;
+            if (!Manager.Replace) bar = Taskbar.On(s.Bounds);
             H = Taskbar.HeightOn(s.Bounds);
             if (H < S(24) || H > S(120)) H = S(48);
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
-            TopMost = true;
+            TopMost = bar == IntPtr.Zero;
             StartPosition = FormStartPosition.Manual;
             Text = "Lilbar";
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.Opaque, true);
@@ -694,6 +713,34 @@ namespace Lilbar
         }
 
         public bool IsPrimary { get { return primary; } }
+
+        // A game or video filling this monitor: Windows lets it cover the taskbar, so the widgets step aside too.
+        bool FullscreenOnScreen()
+        {
+            IntPtr fg = N.GetForegroundWindow();
+            N.RECT r;
+            if (fg == IntPtr.Zero || fg == Handle || !N.GetWindowRect(fg, out r)) return false;
+            var cls = new StringBuilder(64);
+            N.GetClassName(fg, cls, 64);
+            string c = cls.ToString();
+            if (c == "Progman" || c == "WorkerW" || c.StartsWith("Shell_")) return false; // the desktop is full-screen too
+            Rectangle b = screen.Bounds;
+            return r.Left <= b.Left && r.Top <= b.Top && r.Right >= b.Right && r.Bottom >= b.Bottom;
+        }
+
+        // Still over a live taskbar? Explorer restarting replaces its taskbar windows.
+        public bool Attached { get { return bar == IntPtr.Zero || N.IsWindow(bar); } }
+
+        // Follow the taskbar: hide while it is auto-hidden or hidden, and move with it.
+        public void Follow()
+        {
+            if (bar == IntPtr.Zero) return;
+            N.RECT tb;
+            bool on = N.IsWindowVisible(bar) && N.GetWindowRect(bar, out tb) && tb.Bottom - Math.Max(tb.Top, screen.Bounds.Top) >= (tb.Bottom - tb.Top) * 3 / 4
+                && tb.Top < screen.Bounds.Bottom - S(8) && !FullscreenOnScreen();
+            if (on != barShown) { barShown = on; Visible = on; }
+            if (on) Redraw();
+        }
         public Rectangle Strip { get { Rectangle b = screen.Bounds; return new Rectangle(b.X, b.Bottom - H, b.Width, H); } }
 
         protected override CreateParams CreateParams
@@ -701,14 +748,28 @@ namespace Lilbar
             get
             {
                 CreateParams cp = base.CreateParams;
-                cp.ExStyle |= 0x80 | 0x08000000 | 0x8; // TOOLWINDOW | NOACTIVATE | TOPMOST
+                cp.ExStyle |= 0x80 | 0x08000000 | (bar == IntPtr.Zero ? 0x8 : 0); // TOOLWINDOW | NOACTIVATE (| TOPMOST when replacing)
                 return cp;
             }
         }
 
         protected override bool ShowWithoutActivation { get { return true; } }
 
-        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Glass.MakeClear(Handle); }
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Glass.MakeClear(Handle);
+        }
+
+        // The taskbar owns us. Set after showing: WinForms gives a ShowInTaskbar=false form its own hidden owner.
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (bar == IntPtr.Zero) return;
+            N.SetWindowLongPtr(Handle, -8, bar); // GWLP_HWNDPARENT
+            // The taskbar is topmost, so we must be too; ownership then keeps us directly above it.
+            N.SetWindowPos(Handle, (IntPtr)(-1), 0, 0, 0, 0, 0x13); // HWND_TOPMOST | NOSIZE | NOMOVE | NOACTIVATE
+        }
 
         protected override void OnLoad(EventArgs e)
         {
@@ -742,7 +803,7 @@ namespace Lilbar
             return hits.Count - 1 == hover && !dragging;
         }
 
-        Rectangle ToScreen(Rectangle r) { return new Rectangle(Left + r.X, Top + r.Y, r.Width, r.Height); }
+        Rectangle ToScreen(Rectangle r) { return new Rectangle(PointToScreen(r.Location), r.Size); }
 
         public void Redraw()
         {
@@ -753,11 +814,14 @@ namespace Lilbar
             foreach (ItemCfg it in Config.Current.Items)
             {
                 if (!it.On) continue;
+                if (bar != IntPtr.Zero && (it.Id == "apps" || it.Id == "tray")) continue; // the Windows taskbar shows these itself
                 Seg sg = Build(it.Id, th, slot);
                 if (sg != null) { sg.Id = it.Id; segs.Add(sg); }
             }
             // shortcut: tiles that don't fit the screen width are dropped from the right; a second row would be the upgrade
-            int room = screen.Bounds.Width - S(8), used = S(8) - S(6);
+            // shortcut: inside the Windows taskbar we can't see where its centred icons end, so widgets keep to one
+            // half minus a margin for them; reading the icon bounds through UI Automation would be the upgrade
+            int room = bar != IntPtr.Zero ? screen.Bounds.Width / 2 - S(260) : screen.Bounds.Width - S(8), used = S(8) - S(6);
             for (int i = 0; i < segs.Count; i++)
             {
                 used += segs[i].W + S(6);
@@ -795,8 +859,21 @@ namespace Lilbar
                 buf = new Bitmap(W, H, PixelFormat.Format32bppPArgb);
             }
             Rectangle sb = screen.Bounds;
-            int x0 = Config.Current.Align == "left" ? sb.X + S(4) : sb.X + (sb.Width - W) / 2;
-            if (Left != x0 || Top != sb.Bottom - H || Width != W || Height != H) SetBounds(x0, sb.Bottom - H, W, H);
+            if (bar != IntPtr.Zero)
+            {
+                // Over the taskbar: at its far left, or just left of the notification area.
+                N.RECT tb, tray;
+                N.GetWindowRect(bar, out tb);
+                IntPtr notify = N.FindWindowEx(bar, IntPtr.Zero, "TrayNotifyWnd", null);
+                int trayLeft = notify != IntPtr.Zero && N.GetWindowRect(notify, out tray) ? tray.Left : tb.Right - S(140);
+                int bx = Config.Current.Align == "left" ? tb.Left + S(8) : trayLeft - W - S(6), by = tb.Top + (tb.Bottom - tb.Top - H) / 2;
+                if (Left != bx || Top != by || Width != W || Height != H) SetBounds(bx, by, W, H);
+            }
+            else
+            {
+                int x0 = Config.Current.Align == "left" ? sb.X + S(4) : sb.X + (sb.Width - W) / 2;
+                if (Left != x0 || Top != sb.Bottom - H || Width != W || Height != H) SetBounds(x0, sb.Bottom - H, W, H);
+            }
 
             hits.Clear();
             editHits.Clear();
@@ -1433,6 +1510,8 @@ namespace Lilbar
     static class Manager
     {
         public static bool Rebuilding;
+        // Experimental: replace the Windows taskbar instead of living inside it. Read once at start (Settings restarts us).
+        public static bool Replace;
         static readonly List<Dock> docks = new List<Dock>();
         static readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer(), hostTimer = new System.Windows.Forms.Timer();
         static SynchronizationContext ui;
@@ -1445,9 +1524,14 @@ namespace Lilbar
             ui = new WindowsFormsSynchronizationContext();
             using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) Glass.Init(g.DpiX / 96f);
             Config.Load();
-            Taskbar.CaptureAutoHide();
-            TrayHost.Start();
-            Taskbar.Hide();
+            Replace = Config.Current.Replace;
+            if (Replace)
+            {
+                Taskbar.CaptureAutoHide();
+                TrayHost.Start();
+                Taskbar.Hide();
+            }
+            else Taskbar.Restore(); // a replace-mode run that died may have left it hidden
             Sys.Cpu();
             Bg.Start();
             Model.Tick(PostRefresh);
@@ -1464,10 +1548,18 @@ namespace Lilbar
             timer.Interval = 1000;
             timer.Tick += delegate { Tick(); };
             timer.Start();
-            hostTimer.Interval = 250;
-            hostTimer.Tick += delegate { TrayHost.KeepOnTop(); };
+            if (Replace)
+            {
+                hostTimer.Interval = 250;
+                hostTimer.Tick += delegate { TrayHost.KeepOnTop(); };
+                TrayHost.BroadcastTaskbarCreated(); // running apps re-register their tray icons with us
+            }
+            else
+            {
+                hostTimer.Interval = 300;
+                hostTimer.Tick += delegate { Reattach(); };
+            }
             hostTimer.Start();
-            TrayHost.BroadcastTaskbarCreated(); // running apps re-register their tray icons with us
         }
 
         static int ticks;
@@ -1508,19 +1600,28 @@ namespace Lilbar
             SettingsForm.Ping();
         }
 
+        // Widgets mode: rebuild when explorer restarted (new taskbar windows), otherwise follow each taskbar.
+        static void Reattach()
+        {
+            if (quitting) return;
+            if (docks.Exists(d => !d.Attached)) { BuildDocks(); return; }
+            foreach (Dock d in docks) d.Follow();
+        }
+
         static void BuildDocks()
         {
             Rebuilding = true;
-            foreach (Dock d in docks) d.Close();
+            foreach (Dock d in docks) { try { d.Close(); } catch (Exception e) { Taskbar.Log(e); } }
             docks.Clear();
             Rebuilding = false;
-            Taskbar.Hide(); // a new monitor brings a new explorer taskbar
+            if (Replace) Taskbar.Hide(); // a new monitor brings a new explorer taskbar
             foreach (Screen s in Screen.AllScreens)
             {
+                if (!Replace && Taskbar.On(s.Bounds) == IntPtr.Zero) continue; // no Windows taskbar on this monitor (yet)
                 var d = new Dock(s);
                 docks.Add(d);
                 d.Show();
-                if (d.IsPrimary) TrayHost.SetRect(d.Strip);
+                if (d.IsPrimary && Replace) TrayHost.SetRect(d.Strip);
             }
             lastSig = null;
             Refresh();
@@ -1561,13 +1662,20 @@ namespace Lilbar
             try { ScreenTime.Flush(); } catch (Exception e) { Taskbar.Log(e); }
             try { TrayHost.Stop(); } catch (Exception e) { Taskbar.Log(e); }
             try { Taskbar.Restore(); } catch (Exception e) { Taskbar.Log(e); }
-            try { TrayHost.BroadcastTaskbarCreated(); } catch (Exception e) { Taskbar.Log(e); }
+            if (Replace) try { TrayHost.BroadcastTaskbarCreated(); } catch (Exception e) { Taskbar.Log(e); }
         }
     }
 
     // Start with Windows through the per-user Run key (no admin, removable from Task Manager's Startup apps too).
     static class Startup
     {
+        // Settings that only apply at start: start a fresh copy (it waits for this one to let go) and quit.
+        public static void Restart()
+        {
+            Process.Start(Application.ExecutablePath, "--restart");
+            Manager.Quit(null);
+        }
+
         const string Key = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
         public static bool On
@@ -1604,6 +1712,11 @@ namespace Lilbar
             bool fresh;
             using (var mutex = new Mutex(true, "Lilbar.Dock", out fresh))
             {
+                if (!fresh && arg == "--restart")
+                {
+                    try { fresh = mutex.WaitOne(15000); }
+                    catch (AbandonedMutexException) { fresh = true; } // the old copy exited while holding it
+                }
                 if (!fresh) return 0; // already running
                 N.SetProcessDPIAware();
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; // the 4.x runtime may default to older TLS

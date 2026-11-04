@@ -33,6 +33,7 @@ namespace Lilbar
         public List<string> QuickHidden { get; set; }  // quick toggle buttons taken off the bar (wifi, bluetooth, hotspot, airplane, battery, quick)
         public List<string> TrayPinned { get; set; }   // exe paths shown next to the arrow; null = follow Windows
         public string FolderName { get; set; }
+        public bool Replace { get; set; }               // experimental: replace the Windows taskbar instead of sitting inside it
         public List<string> FolderApps { get; set; }   // .exe/.lnk paths
         public string Align { get; set; }              // "center" | "left"
         public List<string> Cities { get; set; }       // world clock time zone ids, "" = slot off

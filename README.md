@@ -1,6 +1,6 @@
 # Lilbar
 
-A lightweight clear-glass dock that replaces the Windows 11 taskbar on every monitor, in the same strip the taskbar used. The Windows key still opens Start, and the old taskbar stays hidden.
+Clear-glass widgets that live on the Windows 11 taskbar, next to the notification area (or at its left edge), on every monitor. The Windows taskbar keeps doing its own job (apps, tray, Start); Lilbar hides with it when it auto-hides and when a game or video goes fullscreen. An experimental mode in Settings replaces the taskbar entirely instead.
 
 - Pinned apps and open windows.
 - The notification area: apps you pinned sit next to an up-arrow, the rest open from it, clicks and right-click menus work as on the real taskbar.
