@@ -87,7 +87,11 @@ namespace Lilbar
                 case "wallpaper": return WallpaperSeg(slot);
                 case "githubact": return GitHubActivitySeg();
                 case "githubov": return GitHubOverviewSeg();
+                case "revenue_total": return RevenueTotalSeg();
             }
+            if (Revenue.Get(id) != null) return RevenueSeg(id, false);
+            if (id.EndsWith("_chart") && Revenue.Get(id.Substring(0, id.Length - 6)) != null) return RevenueSeg(id.Substring(0, id.Length - 6), true);
+            if (Array.IndexOf(Svc.Ids, id) >= 0) return StatSeg(id);
             return null;
         }
 

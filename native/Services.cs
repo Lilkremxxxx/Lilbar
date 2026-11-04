@@ -289,6 +289,10 @@ namespace Lilbar
             if (Config.Has("metric")) Crypto.MaybeFetch(asyncDone);
             if (Config.Has("leetcode")) LeetCode.MaybeFetch(asyncDone);
             if (Config.Has("wallpaper")) Wallpapers.MaybeFetch(asyncDone);
+            bool total = Config.Has("revenue_total");
+            foreach (Revenue.Src r in Revenue.All)
+                if (total || Config.Has(r.Id) || Config.Has(r.Id + "_chart")) Revenue.MaybeFetch(r.Id, asyncDone);
+            foreach (string id in Svc.Ids) if (Config.Has(id)) Svc.MaybeFetch(id, asyncDone);
             if (Config.Has("network")) Net.Tick();
             if (Config.Has("volume")) Audio.Tick();
             Countdown.Tick(); // timers keep running even while their tiles are hidden
@@ -343,6 +347,7 @@ namespace Lilbar
             if (Config.Has("screentime") || Config.Has("timeline")) s.Append(ScreenTime.TotalSeconds() / 60);
             s.Append('q').Append(Stocks.Stamp).Append(Crypto.Price).Append(LeetCode.All).Append(LeetCode.Error).Append(Wallpapers.Pics.Count)
                 .Append(GitHub.OpenPRs).Append(GitHub.Stars).Append(GitHub.Reviews);
+            s.Append('r').Append(Revenue.Stamp).Append('v').Append(Svc.Stamp);
             return s.ToString();
         }
     }

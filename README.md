@@ -15,6 +15,10 @@ One small exe, one process, about 60 MB of RAM. No install, no dependencies. Set
 
 The weather tile sends your IP address to ipinfo.io to find your city, then asks open-meteo.com for the forecast. Turn the tile off in Settings to stop both.
 
+Other tiles talk to the internet only when you turn them on: stock quotes (Yahoo Finance), a crypto price (Binance), exchange rates (open.er-api.com), Bing images, LeetCode, and your iCal address. Tiles that need an account use the key you paste in Settings → Tài khoản; keys are encrypted for your Windows user and each one is sent only to its own service (Stripe, Polar, Dodo Payments, Shopify, Lemon Squeezy, Paddle, Gumroad, Plausible, Dub, Resend, Linear, Supabase, YouTube, X, Instagram, Gmail over IMAP, DeepSeek). TikTok follower counts are read from the public profile page. Screen time stays on this PC.
+
+The widget set covers the same functions as [lumabar](https://lumabar.xyz)'s library with Lilbar's own design and code.
+
 The Claude Code widget reads the sign-in Claude Code already stores in `~/.claude/.credentials.json` and asks `api.anthropic.com` for your 5-hour and weekly limits, at most every 5 minutes. The token never goes anywhere else. If Claude Code isn't installed, the widget doesn't appear.
 
 ## Build and run
