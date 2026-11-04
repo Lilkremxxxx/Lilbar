@@ -26,15 +26,15 @@ namespace Lilbar
             string text = Has("Segoe UI Variable Text") ? "Segoe UI Variable Text" : "Segoe UI";
             string semi = Has("Segoe UI Variable Text Semibold") ? "Segoe UI Variable Text Semibold" : "Segoe UI Semibold";
             string disp = Has("Segoe UI Variable Display") ? "Segoe UI Variable Display" : "Segoe UI";
-            Time = F(disp, 16, FontStyle.Bold);
-            Date = F(semi, 11.5f, FontStyle.Regular);
-            Value = F(semi, 12.5f, FontStyle.Regular);
-            Label = F(semi, 8.5f, FontStyle.Regular);
-            Batt = F(disp, 15, FontStyle.Bold);
+            Time = F(disp, 17, FontStyle.Bold);
+            Date = F(semi, 12.5f, FontStyle.Regular);
+            Value = F(semi, 13.5f, FontStyle.Regular);
+            Label = F(semi, 9.5f, FontStyle.Regular);
+            Batt = F(disp, 16, FontStyle.Bold);
             Bolt = F("Segoe UI Symbol", 11, FontStyle.Regular);
-            Row = F(semi, 12, FontStyle.Regular);
-            Day = F(semi, 11, FontStyle.Regular);
-            DateBig = F(disp, 15, FontStyle.Bold);
+            Row = F(semi, 13, FontStyle.Regular);
+            Day = F(semi, 12, FontStyle.Regular);
+            DateBig = F(disp, 16, FontStyle.Bold);
             Glyph = F("Segoe UI Symbol", 13, FontStyle.Regular);
             Sym = F("Segoe UI Symbol", 11, FontStyle.Regular);
             Big = F(disp, 18, FontStyle.Regular);
@@ -131,6 +131,7 @@ namespace Lilbar
         // Tiles inside the dock's shell: only a hairline, no fill (opacity 0).
         public static void Tile(Graphics g, Rectangle r)
         {
+            if (r.Width < 4 || r.Height < 4) return;
             var edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
             using (GraphicsPath p = Round(edge, S(9)))
             using (var b = new LinearGradientBrush(r, Color.FromArgb(84, 255, 255, 255), Color.FromArgb(34, 255, 255, 255), 90f))
@@ -167,6 +168,7 @@ namespace Lilbar
         // light catches the top edge, and a soft dark outline that keeps the pane apart from busy wallpapers. No blur.
         static void Pane(Graphics g, Rectangle r, int rad, int dark)
         {
+            if (r.Width < 4 || r.Height < 4) return;
             var edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
             using (GraphicsPath p = Round(edge, rad))
             {

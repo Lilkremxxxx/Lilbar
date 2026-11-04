@@ -588,6 +588,63 @@ namespace Lilbar
         class AppItem { public string Title, Pin; public Bitmap Icon; public bool Running, Active; public Action Click; public List<Win> Wins; public string Key { get { return Pin ?? (Wins.Count > 0 ? Wins[0].Hwnd.ToString() : Title); } } }
         class Slot { public Rectangle R; public string Id; }
 
+        // Layout motion, like the Windows taskbar: when apps open or close, tiles and icons slide to their new
+        // places, a new icon grows in and a closed one shrinks out. Time-based tweens keyed by tile id / app key;
+        // a 15 ms timer redraws only while something is moving.
+        class Tween { public float From, To; public long Start; }
+        class Leaving { public Bitmap Icon; public float X; public long Start; }
+        const float SlideMs = 220;
+        readonly Dictionary<string, Tween> tweens = new Dictionary<string, Tween>();
+        readonly HashSet<string> usedTweens = new HashSet<string>();
+        readonly List<Leaving> leaving = new List<Leaving>();
+        Dictionary<string, KeyValuePair<Bitmap, float>> lastApps = new Dictionary<string, KeyValuePair<Bitmap, float>>();
+        readonly System.Windows.Forms.Timer animClock = new System.Windows.Forms.Timer { Interval = 15 };
+        readonly bool motion = Glass.Motion;
+        bool animating, firstFrame = true;
+
+        // The displayed value for key, easing toward target; a key seen for the first time starts at from.
+        float Anim(string key, float target, float from)
+        {
+            long now = Environment.TickCount;
+            usedTweens.Add(key);
+            Tween t;
+            if (!tweens.TryGetValue(key, out t))
+            {
+                t = new Tween { From = firstFrame || !motion ? target : from, To = target, Start = now };
+                tweens[key] = t;
+            }
+            else if (t.To != target)
+            {
+                t.From = motion ? TweenAt(t, now) : target;
+                t.To = target;
+                t.Start = now;
+            }
+            float v = TweenAt(t, now);
+            if (v != t.To) animating = true;
+            return v;
+        }
+
+        static float TweenAt(Tween t, long now)
+        {
+            float k = Glass.EaseOut((now - t.Start) / SlideMs);
+            return k >= 1 ? t.To : t.From + (t.To - t.From) * k;
+        }
+
+        // Draws an icon faded to alpha a and scaled to (0.6 + 0.4 a) of size px, centred in c.
+        static void FadedIcon(Graphics g, Bitmap b, Rectangle c, int px, float a)
+        {
+            if (b == null || a <= 0) return;
+            int s = (int)Math.Round(px * (0.6f + 0.4f * Math.Min(1, a)));
+            var r = new Rectangle(c.X + (c.Width - s) / 2, c.Y + (c.Height - s) / 2 - S(1), s, s);
+            if (a >= 1) { Glass.Image(g, b, r); return; }
+            using (var ia = new ImageAttributes())
+            {
+                ia.SetColorMatrix(new ColorMatrix { Matrix33 = a });
+                try { g.DrawImage(b, r, 0, 0, b.Width, b.Height, GraphicsUnit.Pixel, ia); }
+                catch (ArgumentException) { }
+            }
+        }
+
         // Edit mode (right-click → Chỉnh sửa thanh): tiles and pinned apps drag, × takes a tile off, tray icons
         // move between the bar and the arrow. Clicks don't launch anything until "Xong".
         public static bool Editing;
@@ -633,6 +690,7 @@ namespace Lilbar
             tip.ShowAlways = true;
             Bounds = new Rectangle(s.Bounds.X, s.Bounds.Bottom - H, S(48), H);
             hoverClock.Tick += delegate { HoverTick(); };
+            animClock.Tick += delegate { Redraw(); };
         }
 
         public bool IsPrimary { get { return primary; } }
@@ -671,6 +729,7 @@ namespace Lilbar
             ClosePopup();
             ClosePreview();
             hoverClock.Dispose();
+            animClock.Dispose();
             if (reserved) Taskbar.Unreserve(Handle);
             reserved = false;
             if (!Manager.Rebuilding) Manager.Quit(this); // closed from outside (taskkill, logoff): quit cleanly
@@ -687,6 +746,8 @@ namespace Lilbar
 
         public void Redraw()
         {
+            animating = false;
+            usedTweens.Clear();
             int th = H - S(8), slot = th - S(6);
             var segs = new List<Seg>();
             foreach (ItemCfg it in Config.Current.Items)
@@ -720,8 +781,14 @@ namespace Lilbar
             if (segs.Count == 0) // keep something to right-click
                 segs.Add(new Seg { W = slot + S(8), Draw = (g, r) => { Glass.Tile(g, r); Glass.Center(g, "☰", Glass.Glyph, Color.White, r); AddHit(r, null, b => ShowMenu(), "Lilbar", false); } });
 
+            // Widths ease toward their new size; a tile that shows up later grows in from nothing.
             int pad = S(4), gap = S(6), W = pad * 2 - gap;
-            foreach (Seg sg in segs) W += sg.W + gap;
+            var widths = new int[segs.Count];
+            for (int i = 0; i < segs.Count; i++)
+            {
+                widths[i] = (int)Math.Round(Anim("w:" + (segs[i].Id ?? "#" + i), segs[i].W, 0));
+                W += widths[i] + gap;
+            }
             if (buf == null || buf.Width != W || buf.Height != H)
             {
                 if (buf != null) buf.Dispose();
@@ -739,18 +806,27 @@ namespace Lilbar
             {
                 Glass.Shell(g, new Rectangle(1, 1, W - 2, H - 2));
                 int x = pad;
-                foreach (Seg sg in segs)
+                for (int i = 0; i < segs.Count; i++)
                 {
-                    var r = new Rectangle(x, (H - th) / 2, sg.W, th);
+                    Seg sg = segs[i];
+                    var r = new Rectangle(x, (H - th) / 2, widths[i], th);
                     if (sg.Id != null) segSlots.Add(new Slot { R = r, Id = sg.Id });
                     if (dragging && !dragPin && sg.Id == dragFrom.Id) EmptySlot(g, r, S(9)); // it rides under the cursor instead
-                    else sg.Draw(g, r);
-                    x += sg.W + gap;
+                    else if (widths[i] >= S(12)) // a tile just starting to grow in has nothing to show yet
+                    {
+                        if (widths[i] != sg.W) g.SetClip(Rectangle.Inflate(r, 1, 1)); // mid-resize: reveal, don't overflow
+                        sg.Draw(g, r);
+                        g.ResetClip();
+                    }
+                    x += widths[i] + gap;
                 }
                 if (Editing) DrawEdit(g);
                 if (dragging) DrawDrag(g);
             }
             if (Editing) { hits.Clear(); hits.AddRange(editHits); } // only the edit controls answer clicks
+            foreach (string k in new List<string>(tweens.Keys)) if (!usedTweens.Contains(k)) tweens.Remove(k); // closed windows, removed tiles
+            firstFrame = false;
+            if (animating && motion) animClock.Start(); else animClock.Stop();
             Invalidate();
         }
 
@@ -862,21 +938,38 @@ namespace Lilbar
                 Draw = (g, r) =>
                 {
                     Glass.Tile(g, r);
-                    int ax = r.X + S(4), sy = r.Y + (r.Height - slot) / 2, icon = AppIcon;
-                    foreach (AppItem it in items)
+                    int sy = r.Y + (r.Height - slot) / 2, icon = AppIcon;
+                    long now = Environment.TickCount;
+                    var seen = new Dictionary<string, KeyValuePair<Bitmap, float>>();
+                    for (int i = 0; i < items.Count; i++)
                     {
-                        var c = new Rectangle(ax, sy, slot, slot);
-                        AppItem item = it;
-                        ax += slot + S(4);
+                        AppItem item = items[i];
+                        float target = S(4) + i * (slot + S(4));
+                        float dx = Anim("ax:" + item.Key, target, target); // slides when a neighbour opens or closes
+                        float a = Anim("ai:" + item.Key, 1, 0);           // a new icon grows in
+                        seen[item.Key] = new KeyValuePair<Bitmap, float>(item.Icon, dx);
+                        var c = new Rectangle(r.X + (int)Math.Round(dx), sy, slot, slot);
                         if (item.Pin != null) pinSlots.Add(new Slot { R = c, Id = item.Pin });
                         bool hov = AddHit(c, null, b => item.Click(), null, false);
                         hits[hits.Count - 1].App = item;
                         if (dragging && dragPin && item.Pin == dragFrom.Id) { EmptySlot(g, c, S(8)); continue; }
-                        if (item.Active || hov) Glass.Fill(g, c, S(8), Color.FromArgb(item.Active ? 56 : 36, 255, 255, 255));
-                        if (item.Icon != null) g.DrawImage(item.Icon, new Rectangle(c.X + (slot - icon) / 2, c.Y + (slot - icon) / 2 - S(1), icon, icon));
+                        if (item.Active || hov) Glass.Fill(g, c, S(8), Color.FromArgb((int)((item.Active ? 56 : 36) * Math.Min(1, a)), 255, 255, 255));
+                        if (item.Icon != null) FadedIcon(g, item.Icon, c, icon, a);
                         else Glass.Center(g, item.Title.Substring(0, 1), Glass.Value, Color.White, c);
-                        if (item.Running)
+                        if (item.Running && a >= 1)
                             using (var dot = new SolidBrush(Glass.Blue)) g.FillEllipse(dot, c.X + c.Width / 2 - S(2), c.Bottom - S(4), S(4), S(4));
+                    }
+                    // An app that just closed shrinks and fades where it stood while the others close the gap.
+                    foreach (KeyValuePair<string, KeyValuePair<Bitmap, float>> old in lastApps)
+                        if (!seen.ContainsKey(old.Key) && motion) leaving.Add(new Leaving { Icon = old.Value.Key, X = old.Value.Value, Start = now });
+                    lastApps = seen;
+                    leaving.RemoveAll(l => now - l.Start >= SlideMs);
+                    foreach (Leaving l in leaving)
+                    {
+                        float k = Glass.EaseOut((now - l.Start) / SlideMs);
+                        var c = new Rectangle(r.X + (int)Math.Min(l.X, r.Width - slot - S(4)), sy, slot, slot);
+                        FadedIcon(g, l.Icon, c, icon, 1 - k);
+                        animating = true;
                     }
                 }
             };
@@ -1464,10 +1557,11 @@ namespace Lilbar
         {
             if (shutDown) return;
             shutDown = true;
-            ScreenTime.Flush();
-            TrayHost.Stop();
-            Taskbar.Restore();
-            TrayHost.BroadcastTaskbarCreated();
+            // Each step on its own: a failure in one (say, after a half-finished start) must never leave the taskbar hidden.
+            try { ScreenTime.Flush(); } catch (Exception e) { Taskbar.Log(e); }
+            try { TrayHost.Stop(); } catch (Exception e) { Taskbar.Log(e); }
+            try { Taskbar.Restore(); } catch (Exception e) { Taskbar.Log(e); }
+            try { TrayHost.BroadcastTaskbarCreated(); } catch (Exception e) { Taskbar.Log(e); }
         }
     }
 
