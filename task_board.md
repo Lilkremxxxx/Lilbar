@@ -14,6 +14,7 @@ _Last updated: 2026-11-04 by claude-code_
 | T-008 | Now Playing (WinRT GlobalSystemMediaTransportControls) | blocked: không gọi WinRT từ Node thuần | P2 | claude-code | backlog | user | hiện bài đang phát + play/pause | 2026-11-03 |
 | T-013 | Bỏ bản Electron (main.js, win32.js, preload.js, index.html, node_modules, package*.json) | blocked: chờ user xác nhận xoá | P2 | human | 02_dock_mvp | claude-code | user đồng ý, đã xoá | 2026-11-04 |
 | T-010 | Ẩn dock khi game/video fullscreen; tự chạy khi khởi động | todo | P2 | claude-code | backlog | claude-code | dock biến mất khi app fullscreen | 2026-11-04 |
+| T-018 | Thêm widget kiểu lumabar: Now Playing (WinRT), thời tiết (open-meteo), GitHub… | todo | P2 | claude-code | backlog | user | - | 2026-11-04 |
 | T-011 | Nhiều cửa sổ cùng app: click pinned đang chạy nên cho chọn cửa sổ (hiện tại lấy cửa sổ đầu) | todo | P2 | claude-code | backlog | claude-code | - | 2026-11-04 |
 
 ## Done
@@ -29,6 +30,9 @@ _Last updated: 2026-11-04 by claude-code_
 | T-009 | Appbar thật (SHAppBarMessage) + taskbar auto-hide thay cho SPI_SETWORKAREA | 2026-11-04 | `win32.js`; work area 1000px khi chạy, 1032px sau khi thoát |
 | T-012 | Viết lại dock bằng C# native + glassmorphism (acrylic DWM) | 2026-11-04 | `native/Lilbar.cs`, `native/build.cmd`; 42 MB RAM vs 329 MB Electron |
 | T-014 | Đưa dự án lên GitHub, cập nhật repo sau mỗi thay đổi | 2026-11-04 | https://github.com/Lilkremxxxx/Lilbar (main) |
+| T-015 | Thay hẳn taskbar: phím Windows không bật thanh cũ | 2026-11-04 | `Taskbar.Watch` (SetWinEventHook) + TaskbarCreated; test nhấn Win: Start mở, thanh cũ ẩn |
+| T-016 | Dock cao bằng taskbar gốc, hiệu ứng clear | 2026-11-04 | 48px sát mép dưới, accent TRANSPARENTGRADIENT |
+| T-017 | Widget usage Claude Code (phiên 5h, tuần) | 2026-11-04 | `Claude` class; dữ liệu thật 34% / 3% |
 
 ## Rules for agents
 - New task -> next free ID, new row in Active.

@@ -1,4 +1,4 @@
-// Lilbar: a glass dock that replaces the Windows taskbar.
+// Lilbar: a clear-glass dock that replaces the Windows taskbar.
 // Build with build.cmd (csc.exe that ships with Windows, so C# 5 only: no $"", no ?., no => members).
 // Lilbar.exe --restore   puts the Windows taskbar back after a hard kill.
 // Lilbar.exe --selftest  checks the Win32 plumbing and returns the number of failures.
@@ -9,12 +9,15 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
+using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 namespace Lilbar
@@ -22,6 +25,7 @@ namespace Lilbar
     static class N
     {
         public delegate bool EnumProc(IntPtr h, IntPtr l);
+        public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
         [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
         [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
@@ -33,7 +37,11 @@ namespace Lilbar
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
         [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int RegisterWindowMessage(string name);
+        [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod, WinEventProc proc, uint pid, uint thread, uint flags);
+        [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
         [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
         [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
         [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr h);
@@ -59,11 +67,15 @@ namespace Lilbar
         public struct SHFILEINFO { public IntPtr hIcon; public int iIcon; public uint dwAttributes; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szDisplayName; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName; }
     }
 
-    // Auto-hide drops the Windows taskbar's work-area reservation; SW_HIDE removes it from view.
-    // State file is shared with the Electron build (win32.js): {"state":<ABM_GETSTATE>}.
+    // Hides the Windows taskbar and keeps it hidden: explorer re-shows it on some events (Start menu,
+    // display changes), so a WinEvent hook on explorer's process hides it again at once.
+    // Explorer keeps reserving its strip while hidden, and the dock sits exactly in that strip.
     static class Taskbar
     {
+        // Written only by the older auto-hide build; still read so its leftovers get undone.
         static readonly string StateFile = Path.Combine(Path.GetTempPath(), "lilbar-taskbar-state.json");
+        static N.WinEventProc onShow; // field keeps the delegate alive while native code holds it
+        static IntPtr hook, tray;
 
         static N.APPBARDATA Abd(IntPtr h)
         {
@@ -76,21 +88,43 @@ namespace Lilbar
 
         static IntPtr Tray() { return N.FindWindow("Shell_TrayWnd", null); }
 
-        public static void Hide()
+        // Returns the taskbar's height in pixels; autoHide tells whether explorer reserves no strip.
+        public static int Hide(out bool autoHide)
         {
-            IntPtr tray = Tray();
+            if (File.Exists(StateFile)) Restore();
+            tray = Tray();
             var d = Abd(tray);
-            if (!File.Exists(StateFile)) File.WriteAllText(StateFile, "{\"state\":" + (ulong)N.SHAppBarMessage(4, ref d) + "}"); // ABM_GETSTATE
-            d = Abd(tray);
-            d.lParam = (IntPtr)1; // ABS_AUTOHIDE
-            N.SHAppBarMessage(10, ref d); // ABM_SETSTATE
+            autoHide = ((ulong)N.SHAppBarMessage(4, ref d) & 1) != 0; // ABM_GETSTATE & ABS_AUTOHIDE
+            N.RECT r;
+            N.GetWindowRect(tray, out r);
             N.ShowWindow(tray, 0);
+            Watch();
+            return r.Bottom - r.Top;
         }
 
-        // Idempotent: without a state file there is nothing to undo except visibility.
+        static void Watch()
+        {
+            Unwatch();
+            uint pid;
+            N.GetWindowThreadProcessId(tray, out pid);
+            onShow = delegate(IntPtr hk, uint ev, IntPtr h, int obj, int child, uint thread, uint time)
+            {
+                if (h == tray && obj == 0) N.ShowWindow(h, 0);
+            };
+            hook = N.SetWinEventHook(0x8002, 0x8002, IntPtr.Zero, onShow, pid, 0, 0); // EVENT_OBJECT_SHOW, out of context
+        }
+
+        static void Unwatch()
+        {
+            if (hook != IntPtr.Zero) N.UnhookWinEvent(hook);
+            hook = IntPtr.Zero;
+        }
+
+        // Idempotent; also undoes the auto-hide flag the older build set.
         public static void Restore()
         {
-            IntPtr tray = Tray();
+            Unwatch();
+            IntPtr t = Tray();
             if (File.Exists(StateFile))
             {
                 int state = 0;
@@ -101,14 +135,14 @@ namespace Lilbar
                     File.Delete(StateFile);
                 }
                 catch (Exception e) { Log(e); }
-                var d = Abd(tray);
+                var d = Abd(t);
                 d.lParam = (IntPtr)state;
-                N.SHAppBarMessage(10, ref d);
+                N.SHAppBarMessage(10, ref d); // ABM_SETSTATE
             }
-            N.ShowWindow(tray, 5);
+            N.ShowWindow(t, 5);
         }
 
-        // Reserve a strip at the bottom edge so maximized windows stop above the dock.
+        // Only needed when the user's taskbar is auto-hide, so explorer reserves nothing.
         public static void Reserve(IntPtr h, Rectangle strip)
         {
             var d = Abd(h);
@@ -125,6 +159,102 @@ namespace Lilbar
         {
             try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "lilbar.log"), DateTime.Now.ToString("s") + " " + e + Environment.NewLine); }
             catch { }
+        }
+    }
+
+    // Claude Code plan limits, read the way Claude Code's /usage does: the OAuth token Claude Code
+    // keeps in .credentials.json, sent only to api.anthropic.com. Response shape observed 2026-11-04.
+    static class Claude
+    {
+        public class Limit { public double Pct; public DateTime Reset; }
+        public static volatile Limit Session, Week;
+        public static volatile string Error; // null when the last read worked
+        public static volatile bool Available;
+        static DateTime next = DateTime.MinValue;
+        static int busy;
+
+        static string CredPath()
+        {
+            string dir = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
+            if (string.IsNullOrEmpty(dir)) dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
+            return Path.Combine(dir, ".credentials.json");
+        }
+
+        public static void RefreshNow() { next = DateTime.MinValue; }
+
+        // Called from the UI timer; the request runs on the thread pool, at most every 5 minutes.
+        public static void MaybeFetch(Action done)
+        {
+            if (DateTime.Now < next || Interlocked.Exchange(ref busy, 1) == 1) return;
+            next = DateTime.Now.AddMinutes(5);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { Fetch(); }
+                catch (Exception e) { Error = "Không đọc được"; Taskbar.Log(e); }
+                finally { Interlocked.Exchange(ref busy, 0); done(); }
+            });
+        }
+
+        static void Fetch()
+        {
+            string path = CredPath();
+            Available = File.Exists(path);
+            if (!Available) return;
+            var cred = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(path));
+            object o;
+            var oauth = cred != null && cred.TryGetValue("claudeAiOauth", out o) ? o as Dictionary<string, object> : null;
+            string token = oauth != null && oauth.ContainsKey("accessToken") ? oauth["accessToken"] as string : null;
+            if (string.IsNullOrEmpty(token)) { Error = "Chưa đăng nhập Claude Code"; return; }
+            long exp = oauth.ContainsKey("expiresAt") ? Convert.ToInt64(oauth["expiresAt"], CultureInfo.InvariantCulture) : 0;
+            if (exp > 0 && DateTimeOffset.FromUnixTimeMilliseconds(exp) < DateTimeOffset.UtcNow)
+            {
+                Error = "Mở Claude Code để đăng nhập lại"; // Claude Code refreshes the token itself
+                next = DateTime.Now.AddMinutes(1);
+                return;
+            }
+
+            var req = (HttpWebRequest)WebRequest.Create("https://api.anthropic.com/api/oauth/usage");
+            req.Headers["Authorization"] = "Bearer " + token;
+            req.Headers["anthropic-beta"] = "oauth-2025-04-20";
+            req.UserAgent = "claude-code/2.0.0";
+            req.Timeout = 15000;
+            try
+            {
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                using (var r = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                    Parse(r.ReadToEnd());
+                Error = null;
+            }
+            catch (WebException e)
+            {
+                var resp = e.Response as HttpWebResponse;
+                if (resp == null) { Error = "Không có mạng"; next = DateTime.Now.AddMinutes(1); return; }
+                using (resp)
+                {
+                    int code = (int)resp.StatusCode, wait;
+                    if (code == 429) next = DateTime.Now.AddSeconds(int.TryParse(resp.Headers["retry-after"], out wait) ? Math.Max(wait, 60) : 300);
+                    else if (code == 401 || code == 403) { Error = "Mở Claude Code để đăng nhập lại"; next = DateTime.Now.AddMinutes(1); }
+                    else { Error = "Anthropic trả lỗi " + code; next = DateTime.Now.AddMinutes(2); }
+                }
+            }
+        }
+
+        public static void Parse(string json)
+        {
+            var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+            Session = Read(d, "five_hour");
+            Week = Read(d, "seven_day");
+        }
+
+        static Limit Read(Dictionary<string, object> d, string key)
+        {
+            object o;
+            var m = d != null && d.TryGetValue(key, out o) ? o as Dictionary<string, object> : null;
+            if (m == null) return null;
+            var l = new Limit();
+            if (m.TryGetValue("utilization", out o) && o != null) l.Pct = Convert.ToDouble(o, CultureInfo.InvariantCulture);
+            if (m.TryGetValue("resets_at", out o) && o is string) l.Reset = DateTimeOffset.Parse((string)o, CultureInfo.InvariantCulture).LocalDateTime;
+            return l;
         }
     }
 
@@ -264,8 +394,9 @@ namespace Lilbar
         class AppItem { public string Title; public Bitmap Icon; public bool Running, Active; public Action Click; }
 
         static readonly Color Blue = Color.FromArgb(255, 74, 155, 255);
+        static readonly int TaskbarCreated = N.RegisterWindowMessage("TaskbarCreated");
         readonly float scale;
-        readonly Font fTime, fDate, fValue, fLabel, fBatt, fBolt;
+        readonly Font fTime, fDate, fValue, fLabel, fBatt, fBolt, fRow;
         readonly NotifyIcon tray;
         readonly ToolTip tip = new ToolTip();
         readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
@@ -274,15 +405,16 @@ namespace Lilbar
         List<Pin> pins = new List<Pin>();
         List<Win> wins = new List<Win>();
         Bitmap buf;
-        int cpu, ram, tick, hover = -1;
+        int H, cpu, ram, tick, hover = -1;
         string sig = "";
-        bool reserved;
+        bool reserved, hidden;
 
         int S(float v) { return (int)Math.Round(v * scale); }
 
         public Dock()
         {
             using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) scale = g.DpiX / 96f;
+            H = S(48);
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             TopMost = true;
@@ -290,12 +422,13 @@ namespace Lilbar
             Text = "Lilbar";
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.Opaque, true);
 
-            fTime = new Font("Segoe UI", S(15), FontStyle.Bold, GraphicsUnit.Pixel);
+            fTime = new Font("Segoe UI", S(14), FontStyle.Bold, GraphicsUnit.Pixel);
             fDate = new Font("Segoe UI", S(10), FontStyle.Regular, GraphicsUnit.Pixel);
-            fValue = new Font("Segoe UI Semibold", S(11), FontStyle.Regular, GraphicsUnit.Pixel);
-            fLabel = new Font("Segoe UI", S(7.5f), FontStyle.Regular, GraphicsUnit.Pixel);
-            fBatt = new Font("Segoe UI", S(14), FontStyle.Bold, GraphicsUnit.Pixel);
-            fBolt = new Font("Segoe UI Symbol", S(12), FontStyle.Regular, GraphicsUnit.Pixel);
+            fValue = new Font("Segoe UI Semibold", S(10.5f), FontStyle.Regular, GraphicsUnit.Pixel);
+            fLabel = new Font("Segoe UI", S(7), FontStyle.Regular, GraphicsUnit.Pixel);
+            fBatt = new Font("Segoe UI", S(13), FontStyle.Bold, GraphicsUnit.Pixel);
+            fBolt = new Font("Segoe UI Symbol", S(11), FontStyle.Regular, GraphicsUnit.Pixel);
+            fRow = new Font("Segoe UI Semibold", S(9.5f), FontStyle.Regular, GraphicsUnit.Pixel);
 
             tray = new NotifyIcon();
             tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -325,11 +458,10 @@ namespace Lilbar
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            int on = 1, round = 2;
-            N.DwmSetWindowAttribute(Handle, 20, ref on, 4);    // DWMWA_USE_IMMERSIVE_DARK_MODE
-            N.DwmSetWindowAttribute(Handle, 33, ref round, 4); // DWMWA_WINDOW_CORNER_PREFERENCE = ROUND
-            // Acrylic blur of whatever is behind the dock, composed by DWM on the GPU.
-            var accent = new N.ACCENT { AccentState = 4, AccentFlags = 2, GradientColor = 0x55181414 }; // ACRYLICBLURBEHIND, tint AABBGGRR
+            int none = unchecked((int)0xFFFFFFFE);
+            N.DwmSetWindowAttribute(Handle, 34, ref none, 4); // DWMWA_BORDER_COLOR = none
+            // Clear glass: per-pixel alpha with no blur; only the tiles are drawn.
+            var accent = new N.ACCENT { AccentState = 2, AccentFlags = 2, GradientColor = 0 }; // TRANSPARENTGRADIENT
             int size = Marshal.SizeOf(typeof(N.ACCENT));
             IntPtr p = Marshal.AllocHGlobal(size);
             try
@@ -341,22 +473,40 @@ namespace Lilbar
             finally { Marshal.FreeHGlobal(p); }
         }
 
+        void HideTaskbar()
+        {
+            bool autoHide;
+            int h = Taskbar.Hide(out autoHide);
+            if (h > S(24) && h < S(120)) H = h;
+            hidden = true;
+            if (autoHide && !reserved)
+            {
+                Rectangle b = Screen.PrimaryScreen.Bounds;
+                Taskbar.Reserve(Handle, new Rectangle(b.X, b.Bottom - H, b.Width, H));
+                reserved = true;
+            }
+        }
+
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            Taskbar.Hide();
-            Rectangle b = Screen.PrimaryScreen.Bounds;
-            Taskbar.Reserve(Handle, new Rectangle(b.X, b.Bottom - S(72), b.Width, S(72)));
-            reserved = true;
+            HideTaskbar();
             Tick();
             timer.Start();
+        }
+
+        // Explorer restarted: a new taskbar appeared, hide it again.
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == TaskbarCreated && hidden) HideTaskbar();
+            base.WndProc(ref m);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             timer.Stop();
             if (reserved) Taskbar.Unreserve(Handle);
-            reserved = false;
+            reserved = hidden = false;
             Taskbar.Restore();
             tray.Visible = false;
             base.OnFormClosing(e);
@@ -373,16 +523,20 @@ namespace Lilbar
             tick++;
             if (tick % 30 == 0) pins = Sys.Pinned();
             if (tick % 2 == 1) { cpu = Sys.Cpu(); ram = Sys.Ram(); }
+            Claude.MaybeFetch(delegate { if (IsHandleCreated) BeginInvoke((Action)Tick); });
             wins = Sys.Windows();
             PowerStatus ps = SystemInformation.PowerStatus;
             var s = new StringBuilder();
             foreach (Win w in wins) s.Append(w.Hwnd).Append(w.Active ? '*' : '-').Append(w.Title).Append('|');
             s.Append(pins.Count).Append(cpu).Append('/').Append(ram).Append(DateTime.Now.ToString("HH:mm d"));
             s.Append(ps.BatteryLifePercent).Append(ps.PowerLineStatus);
+            s.Append(Claude.Available).Append(Claude.Error).Append(LimitSig(Claude.Session)).Append(LimitSig(Claude.Week));
             if (s.ToString() == sig) return; // nothing visible changed: no repaint
             sig = s.ToString();
             Render();
         }
+
+        static string LimitSig(Claude.Limit l) { return l == null ? "-" : l.Pct + "@" + l.Reset.ToString("HHmm"); }
 
         List<AppItem> Items()
         {
@@ -409,6 +563,25 @@ namespace Lilbar
             return list;
         }
 
+        static string Until(DateTime reset)
+        {
+            TimeSpan t = reset - DateTime.Now;
+            if (t.TotalMinutes < 1) return "now";
+            if (t.TotalHours < 1) return (int)t.TotalMinutes + "m";
+            if (t.TotalHours < 24) return (int)t.TotalHours + "h" + t.Minutes.ToString("00");
+            return reset.Day + "/" + reset.Month;
+        }
+
+        string ClaudeTip()
+        {
+            var s = new StringBuilder("Claude Code");
+            if (Claude.Session != null) s.Append("\nPhiên 5 giờ: ").Append(Math.Round(Claude.Session.Pct)).Append("%, đặt lại lúc ").Append(Claude.Session.Reset.ToString("HH:mm"));
+            if (Claude.Week != null) s.Append("\nTuần: ").Append(Math.Round(Claude.Week.Pct)).Append("%, đặt lại ").Append(Claude.Week.Reset.ToString("HH:mm dd/MM"));
+            if (Claude.Error != null) s.Append("\n").Append(Claude.Error);
+            s.Append("\nBấm để cập nhật");
+            return s.ToString();
+        }
+
         void Render()
         {
             List<AppItem> items = Items();
@@ -424,10 +597,11 @@ namespace Lilbar
             using (Graphics m = Graphics.FromImage(measureBmp))
                 clockText = (int)Math.Ceiling(Math.Max(m.MeasureString(time, fTime).Width, m.MeasureString(date, fDate).Width));
 
-            int H = S(56), th = S(44), ty = (H - th) / 2, pad = S(6), gap = S(6);
-            int appW = items.Count == 0 ? 0 : S(12) + items.Count * S(40) - S(4);
-            int sysW = S(100), batW = showBatt ? S(62) : 0, clockW = Math.Max(S(78), clockText) + S(20);
-            int W = pad + (appW > 0 ? appW + gap : 0) + sysW + gap + (showBatt ? batW + gap : 0) + clockW + pad;
+            int th = H - S(8), ty = (H - th) / 2, slot = th - S(6), pad = S(4), gap = S(6);
+            int appW = items.Count == 0 ? 0 : S(8) + items.Count * (slot + S(4)) - S(4);
+            int sysW = slot * 2 + S(24), claudeW = Claude.Available ? S(172) : 0;
+            int batW = showBatt ? S(58) : 0, clockW = Math.Max(S(74), clockText) + S(18);
+            int W = pad + (appW > 0 ? appW + gap : 0) + sysW + gap + (claudeW > 0 ? claudeW + gap : 0) + (showBatt ? batW + gap : 0) + clockW + pad;
 
             if (buf == null || buf.Width != W || buf.Height != H)
             {
@@ -437,7 +611,7 @@ namespace Lilbar
             if (Width != W || Height != H)
             {
                 Rectangle b = Screen.PrimaryScreen.Bounds;
-                SetBounds(b.X + (b.Width - W) / 2, b.Bottom - H - S(8), W, H);
+                SetBounds(b.X + (b.Width - W) / 2, b.Bottom - H, W, H); // exactly the strip the taskbar occupied
             }
 
             hits.Clear();
@@ -449,38 +623,56 @@ namespace Lilbar
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-                int x = pad;
+                int x = pad, sy = (H - slot) / 2, icon = slot - S(10);
                 if (appW > 0)
                 {
                     Tile(g, new Rectangle(x, ty, appW, th));
-                    int ax = x + S(6);
+                    int ax = x + S(4);
                     foreach (AppItem it in items)
                     {
-                        var r = new Rectangle(ax, (H - S(36)) / 2, S(36), S(36));
-                        if (it.Active || hits.Count == hover) Fill(g, r, S(10), Color.FromArgb(it.Active ? 46 : 32, 255, 255, 255));
+                        var r = new Rectangle(ax, sy, slot, slot);
+                        if (it.Active || hits.Count == hover) Fill(g, r, S(8), Color.FromArgb(it.Active ? 56 : 36, 255, 255, 255));
                         hits.Add(new Hit { R = r, Click = it.Click, Tip = it.Title });
-                        if (it.Icon != null) g.DrawImage(it.Icon, new Rectangle(r.X + S(5), r.Y + S(5), S(26), S(26)));
+                        if (it.Icon != null) g.DrawImage(it.Icon, new Rectangle(r.X + (slot - icon) / 2, r.Y + (slot - icon) / 2 - S(1), icon, icon));
                         else Center(g, it.Title.Substring(0, 1), fValue, Color.White, r);
                         if (it.Running)
-                            using (var dot = new SolidBrush(Blue)) g.FillEllipse(dot, r.X + r.Width / 2 - S(2), r.Bottom - S(3), S(4), S(4));
-                        ax += S(40);
+                            using (var dot = new SolidBrush(Blue)) g.FillEllipse(dot, r.X + r.Width / 2 - S(2), r.Bottom - S(4), S(4), S(4));
+                        ax += slot + S(4);
                     }
                     x += appW + gap;
                 }
 
                 Tile(g, new Rectangle(x, ty, sysW, th));
-                Ring(g, new Rectangle(x + S(10), (H - S(36)) / 2, S(36), S(36)), cpu, "CPU");
-                Ring(g, new Rectangle(x + S(54), (H - S(36)) / 2, S(36), S(36)), ram, "RAM");
+                Ring(g, new Rectangle(x + S(8), sy, slot, slot), cpu, "CPU");
+                Ring(g, new Rectangle(x + S(16) + slot, sy, slot, slot), ram, "RAM");
                 x += sysW + gap;
+
+                if (claudeW > 0)
+                {
+                    var r = new Rectangle(x, ty, claudeW, th);
+                    Tile(g, r);
+                    hits.Add(new Hit { R = r, Click = () => { Claude.RefreshNow(); Tick(); }, Tip = ClaudeTip() });
+                    if (Claude.Session == null && Claude.Week == null)
+                    {
+                        Center(g, "Claude", fRow, Color.White, new Rectangle(r.X, r.Y + S(3), r.Width, th / 2 - S(2)));
+                        Center(g, Claude.Error ?? "Đang tải…", fDate, Color.FromArgb(190, 255, 255, 255), new Rectangle(r.X + S(4), r.Y + th / 2, r.Width - S(8), th / 2 - S(3)));
+                    }
+                    else
+                    {
+                        UsageRow(g, r, ty + S(3), "5h", Claude.Session);
+                        UsageRow(g, r, ty + th / 2 + S(1), "7d", Claude.Week);
+                    }
+                    x += claudeW + gap;
+                }
 
                 if (showBatt)
                 {
                     var r = new Rectangle(x, ty, batW, th);
-                    Fill(g, r, S(12), pct <= 20 && !charging ? Color.FromArgb(230, 227, 67, 43) : Color.FromArgb(230, 47, 139, 255));
+                    Fill(g, r, S(10), pct <= 20 && !charging ? Color.FromArgb(220, 227, 67, 43) : Color.FromArgb(220, 47, 139, 255));
                     if (charging)
                     {
-                        Center(g, "⚡", fBolt, Color.White, new Rectangle(r.X + S(4), r.Y, S(20), r.Height));
-                        Center(g, pct.ToString(), fBatt, Color.White, new Rectangle(r.X + S(20), r.Y, r.Width - S(24), r.Height));
+                        Center(g, "⚡", fBolt, Color.White, new Rectangle(r.X + S(4), r.Y, S(18), r.Height));
+                        Center(g, pct.ToString(), fBatt, Color.White, new Rectangle(r.X + S(18), r.Y, r.Width - S(22), r.Height));
                     }
                     else Center(g, pct.ToString(), fBatt, Color.White, r);
                     x += batW + gap;
@@ -489,19 +681,42 @@ namespace Lilbar
                 Tile(g, new Rectangle(x, ty, clockW, th));
                 using (var right = new StringFormat { Alignment = StringAlignment.Far })
                 using (var white = new SolidBrush(Color.White))
-                using (var dim = new SolidBrush(Color.FromArgb(190, 255, 255, 255)))
+                using (var dim = new SolidBrush(Color.FromArgb(200, 255, 255, 255)))
                 {
-                    g.DrawString(time, fTime, white, new RectangleF(x, ty + S(4), clockW - S(10), S(20)), right);
-                    g.DrawString(date, fDate, dim, new RectangleF(x, ty + S(24), clockW - S(10), S(16)), right);
+                    g.DrawString(time, fTime, white, new RectangleF(x, ty + S(2), clockW - S(9), S(19)), right);
+                    g.DrawString(date, fDate, dim, new RectangleF(x, ty + S(20), clockW - S(9), S(15)), right);
                 }
             }
             Invalidate();
         }
 
+        // One "5h ████░░ 33%  2h59" row of the Claude tile.
+        void UsageRow(Graphics g, Rectangle tile, int y, string label, Claude.Limit l)
+        {
+            int rowH = S(15), x = tile.X + S(8);
+            Color dim = Color.FromArgb(190, 255, 255, 255);
+            using (var left = new StringFormat { LineAlignment = StringAlignment.Center })
+            using (var right = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center })
+            using (var dimB = new SolidBrush(dim))
+            using (var white = new SolidBrush(Color.White))
+            {
+                g.DrawString(label, fRow, dimB, new RectangleF(x, y, S(20), rowH), left);
+                var bar = new Rectangle(x + S(20), y + rowH / 2 - S(2), S(60), S(4));
+                Fill(g, bar, S(2), Color.FromArgb(50, 255, 255, 255));
+                if (l == null) return;
+                double p = Math.Max(0, Math.Min(100, l.Pct));
+                Color c = p >= 90 ? Color.FromArgb(255, 255, 69, 58) : p >= 70 ? Color.FromArgb(255, 255, 159, 10) : Color.FromArgb(255, 52, 199, 89);
+                if (p > 0) Fill(g, new Rectangle(bar.X, bar.Y, Math.Max(S(4), (int)(bar.Width * p / 100)), bar.Height), S(2), c);
+                g.DrawString(Math.Round(p) + "%", fRow, white, new RectangleF(bar.Right, y, S(36), rowH), right);
+                if (l.Reset > DateTime.MinValue)
+                    g.DrawString(Until(l.Reset), fRow, dimB, new RectangleF(bar.Right + S(36), y, tile.Right - bar.Right - S(36) - S(8), rowH), right);
+            }
+        }
+
         static GraphicsPath Round(Rectangle r, int rad)
         {
             var p = new GraphicsPath();
-            int d = rad * 2;
+            int d = Math.Max(1, Math.Min(rad * 2, Math.Min(r.Width, r.Height)));
             p.AddArc(r.X, r.Y, d, d, 180, 90);
             p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
             p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
@@ -516,14 +731,16 @@ namespace Lilbar
             using (var b = new SolidBrush(c)) g.FillPath(b, p);
         }
 
-        // Frosted tile: light top-to-bottom sheen plus a hairline edge, the glassmorphism look.
+        // Clear-glass tile: a dark translucent pane so text stays readable on any wallpaper,
+        // a light sheen fading downward, and a hairline edge.
         void Tile(Graphics g, Rectangle r)
         {
             var edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
-            using (GraphicsPath p = Round(edge, S(12)))
+            using (GraphicsPath p = Round(edge, S(10)))
             {
-                using (var b = new LinearGradientBrush(r, Color.FromArgb(38, 255, 255, 255), Color.FromArgb(14, 255, 255, 255), 90f)) g.FillPath(b, p);
-                using (var pen = new Pen(Color.FromArgb(46, 255, 255, 255), 1f)) g.DrawPath(pen, p);
+                using (var b = new SolidBrush(Color.FromArgb(118, 14, 14, 18))) g.FillPath(b, p);
+                using (var b = new LinearGradientBrush(r, Color.FromArgb(40, 255, 255, 255), Color.FromArgb(4, 255, 255, 255), 90f)) g.FillPath(b, p);
+                using (var pen = new Pen(Color.FromArgb(64, 255, 255, 255), 1f)) g.DrawPath(pen, p);
             }
         }
 
@@ -531,20 +748,20 @@ namespace Lilbar
         {
             float w = S(3);
             var rc = new RectangleF(r.X + w / 2, r.Y + w / 2, r.Width - w, r.Height - w);
-            using (var track = new Pen(Color.FromArgb(46, 255, 255, 255), w)) g.DrawEllipse(track, rc);
+            using (var track = new Pen(Color.FromArgb(56, 255, 255, 255), w)) g.DrawEllipse(track, rc);
             if (pct > 0)
                 using (var bar = new Pen(Blue, w) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(bar, rc, -90, Math.Min(pct, 100) * 3.6f);
-            Center(g, pct.ToString(), fValue, Color.White, new Rectangle(r.X, r.Y + S(6), r.Width, S(15)));
-            Center(g, label, fLabel, Color.FromArgb(180, 255, 255, 255), new Rectangle(r.X, r.Y + S(19), r.Width, S(10)));
+            Center(g, pct.ToString(), fValue, Color.White, new Rectangle(r.X, r.Y + S(5), r.Width, S(14)));
+            Center(g, label, fLabel, Color.FromArgb(190, 255, 255, 255), new Rectangle(r.X, r.Y + S(17), r.Width, S(9)));
         }
 
         static void Center(Graphics g, string s, Font f, Color c, Rectangle r)
         {
-            using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap })
             using (var b = new SolidBrush(c)) g.DrawString(s, f, b, r, sf);
         }
 
-        // Raw 32-bit copy keeps per-pixel alpha, so DWM shows the acrylic through transparent pixels.
+        // Raw 32-bit copy keeps per-pixel alpha, so the desktop shows through transparent pixels.
         protected override void OnPaint(PaintEventArgs e)
         {
             if (buf == null) return;
@@ -564,7 +781,7 @@ namespace Lilbar
             int h = hits.FindIndex(x => x.R.Contains(e.Location));
             if (h == hover) return;
             hover = h;
-            if (h >= 0) tip.Show(hits[h].Tip, this, hits[h].R.X, -S(34), 2500);
+            if (h >= 0) tip.Show(hits[h].Tip, this, hits[h].R.X, -S(30) - S(16) * hits[h].Tip.Split('\n').Length, 4000);
             else tip.Hide(this);
             Render();
         }
@@ -599,6 +816,7 @@ namespace Lilbar
             {
                 if (!fresh) return 0; // already running
                 N.SetProcessDPIAware();
+                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; // the 4.x runtime may default to older TLS
                 Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e) { Taskbar.Log(e.Exception); Application.Exit(); };
                 AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e) { Taskbar.Log(e.ExceptionObject as Exception); Taskbar.Restore(); };
                 // The loop can end without FormClosing (taskkill posts WM_CLOSE to hidden helper windows too).
@@ -613,6 +831,8 @@ namespace Lilbar
             int fails = 0;
             Action<bool, string> check = delegate(bool ok, string msg) { Console.WriteLine((ok ? "ok   " : "FAIL ") + msg); if (!ok) fails++; };
             check(Marshal.SizeOf(typeof(N.APPBARDATA)) == (IntPtr.Size == 8 ? 48 : 36), "APPBARDATA size " + Marshal.SizeOf(typeof(N.APPBARDATA)));
+            N.RECT tr;
+            check(N.GetWindowRect(N.FindWindow("Shell_TrayWnd", null), out tr) && tr.Bottom - tr.Top > 0, "taskbar height " + (tr.Bottom - tr.Top));
             List<Win> w = Sys.Windows();
             check(w.Count > 0 && w.TrueForAll(x => x.Hwnd != IntPtr.Zero && x.Title.Length > 0), "windows " + w.Count);
             check(w.FindAll(x => x.Active).Count <= 1, "at most one active window");
@@ -625,6 +845,9 @@ namespace Lilbar
             check(c >= 0 && c <= 100, "cpu " + c);
             check(r > 0 && r <= 100, "ram " + r);
             check(Sys.IconOf(Environment.ExpandEnvironmentVariables(@"%WINDIR%\explorer.exe")) != null, "icon of explorer.exe");
+            Claude.Parse("{\"five_hour\":{\"utilization\":33.0,\"resets_at\":\"2026-11-04T05:30:00.230316+00:00\"},\"seven_day\":{\"utilization\":3.0,\"resets_at\":null},\"limits\":[]}");
+            check(Claude.Session != null && Claude.Session.Pct == 33 && Claude.Session.Reset.ToUniversalTime().Hour == 5, "claude usage parse (session)");
+            check(Claude.Week != null && Claude.Week.Pct == 3 && Claude.Week.Reset == DateTime.MinValue, "claude usage parse (week, null reset)");
             return fails;
         }
     }

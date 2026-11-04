@@ -21,9 +21,10 @@ _Last updated: 2026-11-04 by claude-code_
 ## Pipeline / Architecture
 **Bản chính (từ 2026-11-04): `native/Lilbar.cs`**, một file C# 5, build bằng `native/build.cmd` (csc.exe có sẵn trong Windows) ra `native/Lilbar.exe` 27 KB, 1 tiến trình.
 - Lớp `N`: P/Invoke user32/kernel32/dwmapi/shell32/gdi32.
-- `Taskbar`: auto-hide + ẩn taskbar Windows, appbar 72px cạnh dưới, khôi phục; dùng chung `%TEMP%\lilbar-taskbar-state.json` với bản Electron.
+- `Taskbar`: ẩn taskbar Windows (không bật auto-hide), `SetWinEventHook` trên tiến trình explorer ẩn lại ngay khi nó hiện (phím Windows, đổi màn hình), xử lý `TaskbarCreated` khi explorer khởi động lại. Dock nằm đúng dải 48px explorer vẫn giữ chỗ; chỉ đăng ký appbar riêng nếu taskbar gốc của user là auto-hide. Vẫn đọc `%TEMP%\lilbar-taskbar-state.json` của bản cũ để dọn.
+- `Claude`: widget usage Claude Code. Đọc `~/.claude/.credentials.json` (hoặc `CLAUDE_CONFIG_DIR`) lấy `claudeAiOauth.accessToken`, gọi `GET https://api.anthropic.com/api/oauth/usage` (header `anthropic-beta: oauth-2025-04-20`) tối đa 5 phút/lần trên thread pool, tôn trọng `retry-after` khi 429. Hiện `five_hour` và `seven_day` (`utilization`, `resets_at`). Cách gọi lấy từ phân tích lumabar.exe bằng REA + quét byte.
 - `Sys`: EnumWindows, chuyển cửa sổ, app ghim (WScript.Shell đọc .lnk), CPU (GetSystemTimes), RAM (GlobalMemoryStatusEx), icon (SHGetFileInfo, có cache).
-- `Dock` (WinForms Form): kính acrylic qua `SetWindowCompositionAttribute`, bo góc qua DWM, vẽ GDI+ vào bitmap ARGB rồi `SetDIBitsToDevice` để giữ alpha; timer 1 s, chỉ vẽ lại khi dữ liệu đổi.
+- `Dock` (WinForms Form): cao đúng bằng taskbar gốc, nền trong suốt (accent TRANSPARENTGRADIENT, không blur), ô kính tối có viền sáng, vẽ GDI+ vào bitmap ARGB rồi `SetDIBitsToDevice` để giữ alpha; timer 1 s, chỉ vẽ lại khi dữ liệu đổi.
 - `Lilbar.exe --restore` trả taskbar sau kill cứng; `--selftest` kiểm tra Win32.
 
 **Bản Electron cũ** (giữ tới khi user xác nhận bỏ):
@@ -77,3 +78,4 @@ Current phase: 02_dock_mvp — see `Process_phases/README.md`.
 | 2026-11-04 | claude-code | pipeline | Thêm koffi + `win32.js`: cửa sổ đang mở, chuyển cửa sổ, appbar thật; `taskbar.ps1` không còn dùng | user: "tiếp tục"; T-006/T-009 |
 | 2026-11-04 | claude-code | pipeline | Viết lại thành `native/Lilbar.exe` C# + kính acrylic; Electron thành bản cũ | user: "Ok viết lại bằng c# đi"; ưu tiên ít tài nguyên + glassmorphism |
 | 2026-11-04 | claude-code | data | Mã nguồn công khai tại https://github.com/Lilkremxxxx/Lilbar; exe và clone lumabar không đưa lên | user yêu cầu cập nhật repo từ giờ |
+| 2026-11-04 | claude-code | pipeline + data | Thay hẳn taskbar (hook giữ ẩn, bỏ auto-hide), cao 48px, nền trong suốt, widget Claude Code đọc token Claude Code và gọi API usage của Anthropic | user: phím Windows bật thanh cũ; muốn fit chiều cao, hiệu ứng clear, widget usage Claude |

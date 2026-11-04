@@ -1,8 +1,10 @@
 # Lilbar
 
-A lightweight glass dock that replaces the Windows 11 taskbar: pinned apps, open windows, CPU/RAM rings, battery and clock on an acrylic bar at the bottom of the screen.
+A lightweight clear-glass dock that replaces the Windows 11 taskbar: pinned apps, open windows, CPU/RAM rings, Claude Code usage limits, battery and clock, in the same strip the taskbar used. The Windows key still opens Start, and the old taskbar stays hidden.
 
-One 27 KB exe, one process, about 40 MB of RAM. No install, no dependencies.
+One small exe, one process, about 50 MB of RAM. No install, no dependencies.
+
+The Claude Code widget reads the sign-in Claude Code already stores in `~/.claude/.credentials.json` and asks `api.anthropic.com` for your 5-hour and weekly limits, at most every 5 minutes. The token never goes anywhere else. If Claude Code isn't installed, the widget doesn't appear.
 
 ## Build and run
 
