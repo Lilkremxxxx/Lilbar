@@ -469,6 +469,12 @@ namespace Lilbar
             N.keybd_event(0x5B, 0, 2, UIntPtr.Zero);
         }
 
+        public static void Launch(string path, string args)
+        {
+            try { Process.Start(new ProcessStartInfo(path, args) { UseShellExecute = true }); }
+            catch (Exception e) { Taskbar.Log(e); }
+        }
+
         public static void Launch(string path)
         {
             try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }

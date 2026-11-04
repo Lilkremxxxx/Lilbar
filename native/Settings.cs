@@ -33,6 +33,18 @@ namespace Lilbar
 
         static int S(float v) { return Glass.S(v); }
 
+        // Settings has its own type: bigger and semibold so it reads easily at a glance (Windows 11's Segoe UI Variable).
+        static Font STitle, SBody, SSmall, SHeader;
+        static Font SF(string family, float px) { return new Font(family, px * Glass.Scale, FontStyle.Regular, GraphicsUnit.Pixel); }
+        static void Fonts()
+        {
+            if (STitle != null) return;
+            STitle = SF(Glass.DisplaySemi, 26);
+            SBody = SF(Glass.SemiFamily, 15);
+            SSmall = SF(Glass.TextFamily, 13);
+            SHeader = SF(Glass.SemiFamily, 12.5f);
+        }
+
         public static void Open(int tab)
         {
             if (current == null || current.IsDisposed) { current = new SettingsForm(); current.Show(); }
@@ -52,8 +64,9 @@ namespace Lilbar
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            navW = S(170);
-            ClientSize = new Size(S(700), S(560));
+            Fonts();
+            navW = S(200);
+            ClientSize = new Size(S(800), S(660));
             BackColor = Color.Black;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.Opaque, true);
             Config.Changed += Invalidate;
@@ -103,12 +116,12 @@ namespace Lilbar
             rows.Clear();
 
             using (var b = new SolidBrush(NavBg)) g.FillRectangle(b, 0, 0, navW, ClientSize.Height);
-            Glass.Text(g, "Lilbar", Glass.Title, Color.White, new Rectangle(S(20), S(18), navW - S(30), S(30)), StringAlignment.Near);
+            Glass.Text(g, "Lilbar", STitle, Color.White, new Rectangle(S(22), S(18), navW - S(30), S(40)), StringAlignment.Near);
             for (int i = 0; i < Tabs.Length; i++)
             {
-                var r = new Rectangle(S(10), S(70) + i * S(40), navW - S(20), S(34));
+                var r = new Rectangle(S(10), S(80) + i * S(48), navW - S(20), S(42));
                 if (i == tab) Glass.Fill(g, r, S(8), Color.FromArgb(110, 74, 155, 255));
-                Glass.Text(g, Tabs[i], Glass.Body, i == tab ? Color.White : Glass.Dim, new Rectangle(r.X + S(12), r.Y, r.Width - S(12), r.Height), StringAlignment.Near);
+                Glass.Text(g, Tabs[i], SBody, i == tab ? Color.White : Glass.Dim, new Rectangle(r.X + S(12), r.Y, r.Width - S(12), r.Height), StringAlignment.Near);
                 int t = i;
                 hots.Add(new Hot { R = r, Nav = true, Click = () => SetTab(t) });
             }
@@ -133,41 +146,41 @@ namespace Lilbar
         void Header(Graphics g, string text, int x, int w, ref int y)
         {
             y += S(6);
-            Glass.Text(g, text, Glass.Header, Color.FromArgb(160, 255, 255, 255), new Rectangle(x, y, w, S(20)), StringAlignment.Near);
-            y += S(26);
+            Glass.Text(g, text, SHeader, Color.FromArgb(170, 255, 255, 255), new Rectangle(x, y, w, S(22)), StringAlignment.Near);
+            y += S(30);
         }
 
         void Note(Graphics g, string text, int x, int w, ref int y)
         {
-            Glass.Text(g, text, Glass.Small, Color.FromArgb(150, 255, 255, 255), new Rectangle(x, y, w, S(18)), StringAlignment.Near);
-            y += S(26);
+            Glass.Text(g, text, SSmall, Color.FromArgb(165, 255, 255, 255), new Rectangle(x, y, w, S(20)), StringAlignment.Near);
+            y += S(28);
         }
 
         Rectangle Card(Graphics g, int x, int w, ref int y, Bitmap icon, string label, string sub)
         {
-            var r = new Rectangle(x, y, w, S(48));
-            Glass.Fill(g, r, S(10), CardBg);
+            var r = new Rectangle(x, y, w, S(60));
+            Glass.Fill(g, r, S(12), CardBg);
             using (GraphicsPath p = Glass.Round(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), S(10)))
             using (var pen = new Pen(Edge)) g.DrawPath(pen, p);
             int tx = r.X + S(14);
-            if (icon != null) { Glass.Image(g, icon, new Rectangle(r.X + S(12), r.Y + S(14), S(20), S(20))); tx = r.X + S(42); }
+            if (icon != null) { Glass.Image(g, icon, new Rectangle(r.X + S(14), r.Y + (r.Height - S(20)) / 2, S(20), S(20))); tx = r.X + S(46); }
             int tw = r.Right - tx - S(150);
-            if (sub == null) Glass.Text(g, label, Glass.Body, Color.White, new Rectangle(tx, r.Y, tw, r.Height), StringAlignment.Near);
+            if (sub == null) Glass.Text(g, label, SBody, Color.White, new Rectangle(tx, r.Y, tw, r.Height), StringAlignment.Near);
             else
             {
-                Glass.Text(g, label, Glass.Body, Color.White, new Rectangle(tx, r.Y + S(5), tw, S(22)), StringAlignment.Near);
-                Glass.Text(g, sub, Glass.Small, Color.FromArgb(150, 255, 255, 255), new Rectangle(tx, r.Y + S(25), tw, S(18)), StringAlignment.Near);
+                Glass.Text(g, label, SBody, Color.White, new Rectangle(tx, r.Y + S(8), tw, S(24)), StringAlignment.Near);
+                Glass.Text(g, sub, SSmall, Color.FromArgb(165, 255, 255, 255), new Rectangle(tx, r.Y + S(32), tw, S(20)), StringAlignment.Near);
             }
-            y += S(54);
+            y += S(68);
             return r;
         }
 
         // Controls are laid out right to left; each returns the next free right edge.
         int Toggle(Graphics g, Rectangle row, int right, bool on, Action click)
         {
-            var r = new Rectangle(right - S(40), row.Y + (row.Height - S(22)) / 2, S(40), S(22));
-            Glass.Fill(g, r, S(11), on ? Glass.Blue : Color.FromArgb(70, 255, 255, 255));
-            int k = S(16);
+            var r = new Rectangle(right - S(46), row.Y + (row.Height - S(26)) / 2, S(46), S(26));
+            Glass.Fill(g, r, S(13), on ? Glass.Blue : Color.FromArgb(70, 255, 255, 255));
+            int k = S(20);
             using (var b = new SolidBrush(Color.White)) g.FillEllipse(b, on ? r.Right - k - S(3) : r.X + S(3), r.Y + S(3), k, k);
             hots.Add(new Hot { R = r, Click = click });
             return r.X - S(10);
@@ -175,7 +188,7 @@ namespace Lilbar
 
         int Button(Graphics g, Rectangle row, int right, string glyph, bool enabled, Action click)
         {
-            var r = new Rectangle(right - S(28), row.Y + (row.Height - S(28)) / 2, S(28), S(28));
+            var r = new Rectangle(right - S(34), row.Y + (row.Height - S(34)) / 2, S(34), S(34));
             Glass.Fill(g, r, S(7), Plate);
             Glass.Center(g, glyph, Glass.Sym, enabled ? Color.White : Color.FromArgb(70, 255, 255, 255), r);
             if (enabled) hots.Add(new Hot { R = r, Click = click });
@@ -184,9 +197,9 @@ namespace Lilbar
 
         int Segment(Graphics g, Rectangle row, int right, string text, bool on, Action click)
         {
-            var r = new Rectangle(right - S(60), row.Y + (row.Height - S(28)) / 2, S(60), S(28));
+            var r = new Rectangle(right - S(72), row.Y + (row.Height - S(32)) / 2, S(72), S(32));
             Glass.Fill(g, r, S(7), on ? Glass.Blue : Plate);
-            Glass.Center(g, text, Glass.Small, Color.White, r);
+            Glass.Center(g, text, SSmall, Color.White, r);
             hots.Add(new Hot { R = r, Click = click });
             return r.X - S(6);
         }
@@ -206,10 +219,10 @@ namespace Lilbar
             Rectangle r;
             if (isDragged)
             {
-                r = new Rectangle(x, y, w, S(48));
+                r = new Rectangle(x, y, w, S(60));
                 using (GraphicsPath p = Glass.Round(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), S(10)))
                 using (var pen = new Pen(Color.FromArgb(90, 255, 255, 255)) { DashStyle = DashStyle.Dash }) g.DrawPath(pen, p);
-                y += S(54);
+                y += S(68);
             }
             else r = Card(g, x + S(18), w - S(18), ref y, icon, label, sub);
             if (!isDragged) Glass.Center(g, "", Glass.MdlSmall, Color.FromArgb(110, 255, 255, 255), new Rectangle(x, r.Y, S(18), r.Height)); // grip
@@ -310,6 +323,19 @@ namespace Lilbar
 
         void PaintAccounts(Graphics g, int x, int w, ref int y)
         {
+            // Sign in on this PC through Claude Code's own login (a browser page from Anthropic); Lilbar then reads
+            // the usage from Claude Code's sign-in like on any other PC. No login of our own, no borrowed app id.
+            Header(g, "ĐĂNG NHẬP", x, w, ref y);
+            bool cli = ClaudeCli() != null;
+            Rectangle login = Card(g, x, w, ref y, Claude.Mark(S(20)), "Claude Code",
+                Claude.Available ? "Đã đăng nhập trên máy này · bấm để đăng nhập tài khoản khác" : cli ? "Chưa đăng nhập · mở trang đăng nhập của Anthropic" : "Máy này chưa cài Claude Code");
+            Segment(g, login, login.Right - S(12), cli ? "Đăng nhập" : "Cài đặt", true, () =>
+            {
+                if (cli) Sys.Launch("cmd.exe", "/k claude auth login && echo. && echo Xong, Lilbar se tu cap nhat usage. Dong cua so nay.");
+                else Sys.Launch("https://docs.claude.com/en/docs/claude-code/setup");
+                Claude.RefreshNow();
+            });
+
             Header(g, "TÀI KHOẢN VÀ THÔNG SỐ", x, w, ref y);
             Note(g, "Key được mã hoá theo tài khoản Windows của bạn và chỉ gửi tới đúng dịch vụ của nó.", x, w, ref y);
             string service = null;
@@ -354,6 +380,18 @@ namespace Lilbar
             }
             if (pins.Count == 0) Note(g, "Chưa có app ghim nào.", x, w, ref y);
             else Note(g, "Kéo thả để đổi thứ tự.", x, w, ref y);
+        }
+
+        // The claude command on PATH (npm installs claude.cmd / claude.ps1, the native installer claude.exe), or null.
+        static string ClaudeCli()
+        {
+            foreach (string dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';'))
+                foreach (string ext in new[] { ".exe", ".cmd" })
+                {
+                    try { string f = Path.Combine(dir.Trim(), "claude" + ext); if (File.Exists(f)) return f; }
+                    catch (ArgumentException) { } // a malformed PATH entry
+                }
+            return null;
         }
 
         internal static List<string> WindowsPinned()
@@ -424,7 +462,7 @@ namespace Lilbar
             }
             var add = new Rectangle(x, y, w, S(44));
             Glass.Fill(g, add, S(10), Color.FromArgb(150, 74, 155, 255));
-            Glass.Center(g, "+  Thêm ứng dụng…", Glass.Body, Color.White, add);
+            Glass.Center(g, "+  Thêm ứng dụng…", SBody, Color.White, add);
             hots.Add(new Hot { R = add, Click = AddApps });
             y += S(52);
         }
@@ -436,7 +474,7 @@ namespace Lilbar
             int right = row.Right - S(12);
             right = Button(g, row, right, more, true, up);
             right = Button(g, row, right, less, true, down);
-            Glass.Text(g, value, Glass.Body, Color.White, new Rectangle(right - S(130), row.Y, S(124), row.Height), StringAlignment.Far);
+            Glass.Text(g, value, SBody, Color.White, new Rectangle(right - S(130), row.Y, S(124), row.Height), StringAlignment.Far);
         }
 
         static int Step(int v, int d, int min, int max) { return Math.Max(min, Math.Min(max, v + d)); }
@@ -562,7 +600,7 @@ namespace Lilbar
         {
             base.OnMouseWheel(e);
             int max = Math.Max(0, contentH - ClientSize.Height);
-            scroll = Math.Max(0, Math.Min(max, scroll - e.Delta / 120 * S(54)));
+            scroll = Math.Max(0, Math.Min(max, scroll - e.Delta / 120 * S(66)));
             Invalidate();
         }
     }

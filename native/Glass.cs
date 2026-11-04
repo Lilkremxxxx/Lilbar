@@ -22,6 +22,7 @@ namespace Lilbar
         // The user's text size (Settings → Cỡ chữ, 0.8–1.2). Fonts follow it, and so do the widths of tiles that hold
         // text (ST), so bigger text makes the tile wider instead of cutting words off.
         public static float T = 1;
+        public static string TextFamily = "Segoe UI", SemiFamily = "Segoe UI Semibold", DisplaySemi = "Segoe UI Semibold";
         public static int ST(float v) { return (int)Math.Round(v * Scale * T); }
 
         public static void Init(float scale)
@@ -47,7 +48,10 @@ namespace Lilbar
             Small = F(text, 13.5f, FontStyle.Regular);
             Header = F(semi, 13, FontStyle.Regular);
             Caption = F(semi, 11.5f, FontStyle.Regular);
-            Title = F(Has("Segoe UI Variable Display Semib") ? "Segoe UI Variable Display Semib" : "Segoe UI Semibold", 17, FontStyle.Regular);
+            DisplaySemi = Has("Segoe UI Variable Display Semib") ? "Segoe UI Variable Display Semib" : "Segoe UI Semibold";
+            TextFamily = text;
+            SemiFamily = semi;
+            Title = F(DisplaySemi, 17, FontStyle.Regular);
             Mdl = F("Segoe MDL2 Assets", 14, FontStyle.Regular); // Windows' own icon font
             MdlSmall = F("Segoe MDL2 Assets", 11, FontStyle.Regular);
             Flip = F(disp, 19, FontStyle.Bold);
