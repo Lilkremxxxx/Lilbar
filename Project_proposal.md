@@ -76,3 +76,4 @@ Current phase: 02_dock_mvp — see `Process_phases/README.md`.
 | 2026-11-03 | claude-code | pipeline | Chọn Electron, dựng dock v1 (Apps, CPU/RAM, Battery, Clock) chạy được trên máy | user: "làm taskbar ngay trên máy tôi"; Rust chưa cài |
 | 2026-11-04 | claude-code | pipeline | Thêm koffi + `win32.js`: cửa sổ đang mở, chuyển cửa sổ, appbar thật; `taskbar.ps1` không còn dùng | user: "tiếp tục"; T-006/T-009 |
 | 2026-11-04 | claude-code | pipeline | Viết lại thành `native/Lilbar.exe` C# + kính acrylic; Electron thành bản cũ | user: "Ok viết lại bằng c# đi"; ưu tiên ít tài nguyên + glassmorphism |
+| 2026-11-04 | claude-code | data | Mã nguồn công khai tại https://github.com/Lilkremxxxx/Lilbar; exe và clone lumabar không đưa lên | user yêu cầu cập nhật repo từ giờ |

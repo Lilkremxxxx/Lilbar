@@ -28,6 +28,7 @@ _Last updated: 2026-11-04 by claude-code_
 | T-006 | Widget Apps: cửa sổ đang mở, click chuyển/thu nhỏ, chấm xanh app đang chạy | 2026-11-04 | `win32.js` (koffi EnumWindows), `index.html` apps() |
 | T-009 | Appbar thật (SHAppBarMessage) + taskbar auto-hide thay cho SPI_SETWORKAREA | 2026-11-04 | `win32.js`; work area 1000px khi chạy, 1032px sau khi thoát |
 | T-012 | Viết lại dock bằng C# native + glassmorphism (acrylic DWM) | 2026-11-04 | `native/Lilbar.cs`, `native/build.cmd`; 42 MB RAM vs 329 MB Electron |
+| T-014 | Đưa dự án lên GitHub, cập nhật repo sau mỗi thay đổi | 2026-11-04 | https://github.com/Lilkremxxxx/Lilbar (main) |
 
 ## Rules for agents
 - New task -> next free ID, new row in Active.
